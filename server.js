@@ -40,14 +40,23 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static('public'));
 app.use(session({
   secret: process.env.SESSION_SECRET || 'your_session_secret_key_here_change_in_production',
-  resave: true,
-  saveUninitialized: true,
+  resave: false,
+  saveUninitialized: false,
   cookie: { 
-    secure: process.env.NODE_ENV === 'production', // HTTPS in production
+    secure: false, // Temporarily disable for debugging
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    httpOnly: true
+    httpOnly: true,
+    sameSite: 'lax' // Add this for better cookie handling
   }
 }));
+
+// Debug middleware để log sessions
+app.use((req, res, next) => {
+  console.log(`Session ID: ${req.sessionID}`);
+  console.log(`Session User: ${req.session.user ? req.session.user.username : 'undefined'}`);
+  console.log(`Request URL: ${req.url}`);
+  next();
+});
 
 // Models
 const User = require('./models/User');
@@ -325,9 +334,8 @@ app.get('/api/stores', (req, res) => {
   console.log('API stores called, session:', req.session);
   
   if (!req.session.user) {
-    console.log('Không có session user - trả về test stores để debug');
-    // Trả về dữ liệu test thay vì lỗi để debug
-    return res.json(storesData.slice(0, 3));
+    console.log('Không có session user - yêu cầu đăng nhập lại');
+    return res.status(401).json({ error: 'Session expired. Please login again.' });
   }
 
   console.log('Session user:', req.session.user);
