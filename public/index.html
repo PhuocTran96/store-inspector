@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Display App</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div id="app">
+        <!-- Login Screen -->
+        <div id="loginScreen" class="screen active">
+            <div class="container">
+                <div class="login-form">
+                    <div class="logo">
+                        <i class="fas fa-camera"></i>
+                        <h1>Project Display</h1>
+                    </div>                    <form id="loginForm">
+                        <div class="form-group">
+                            <label for="username">User ID</label>
+                            <input type="text" id="username" name="username" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="password">Password</label>
+                            <input type="password" id="password" name="password" required>
+                        </div>
+                        <button type="submit" class="btn-primary">
+                            <i class="fas fa-sign-in-alt"></i>
+                            Đăng nhập
+                        </button>
+                    </form>                    <button id="changePasswordBtn" class="btn-secondary">
+                        <i class="fas fa-key"></i>
+                        Đổi mật khẩu
+                    </button>
+                    <a href="/admin.html" style="display: block; text-align: center; margin-top: 15px; color: #667eea; text-decoration: none;">
+                        <i class="fas fa-user-shield"></i>
+                        Đăng nhập quản trị
+                    </a>
+                </div>
+            </div>
+        </div>        <!-- Change Password Screen -->
+        <div id="changePasswordScreen" class="screen">
+            <div class="container">
+                <div class="header">
+                    <button id="backToLoginBtn" class="btn-back">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h2>Đổi mật khẩu</h2>
+                </div>
+                
+                <!-- User Info Card -->
+                <div class="user-info-card">
+                    <div class="user-avatar">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <div class="user-details">
+                        <h3 id="changePasswordUsername">Chưa đăng nhập</h3>
+                        <p id="changePasswordUserId">ID: -</p>
+                        <span class="user-role" id="changePasswordRole">-</span>
+                    </div>
+                </div>
+                  <div class="form-section">
+                    <h4><i class="fas fa-lock"></i> Cập nhật mật khẩu</h4>
+                    <form id="changePasswordForm">
+                        <div class="form-group" id="userIdGroup">
+                            <label for="changePasswordUserId">
+                                <i class="fas fa-user"></i>
+                                User ID
+                            </label>
+                            <input type="text" id="changePasswordUserIdInput" name="userId" 
+                                   placeholder="Nhập User ID của bạn" required>
+                            <button type="button" id="loadUserInfoBtn" class="btn-secondary" style="margin-top: 10px;">
+                                <i class="fas fa-search"></i>
+                                Tải thông tin người dùng
+                            </button>
+                        </div>
+                        <div class="form-group">
+                            <label for="currentPassword">
+                                <i class="fas fa-key"></i>
+                                Mật khẩu hiện tại
+                            </label>
+                            <input type="password" id="currentPassword" name="currentPassword" 
+                                   placeholder="Nhập mật khẩu hiện tại" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="newPassword">
+                                <i class="fas fa-unlock-alt"></i>
+                                Mật khẩu mới
+                            </label>
+                            <input type="password" id="newPassword" name="newPassword" 
+                                   placeholder="Nhập mật khẩu mới" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="confirmPassword">
+                                <i class="fas fa-check-circle"></i>
+                                Xác nhận mật khẩu mới
+                            </label>
+                            <input type="password" id="confirmPassword" name="confirmPassword" 
+                                   placeholder="Nhập lại mật khẩu mới" required>
+                        </div>
+                        <button type="submit" class="btn-primary">
+                            <i class="fas fa-save"></i>
+                            Cập nhật mật khẩu
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Store Selection Screen -->
+        <div id="storeScreen" class="screen">
+            <div class="container">
+                <div class="header">
+                    <h2>Chọn cửa hàng</h2>
+                    <button id="logoutBtn" class="btn-logout">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </button>
+                </div>
+                  <!-- Store Filter Section -->
+                <div class="store-filter-section">
+                    <div class="search-container">
+                        <input type="text" id="storeSearch" placeholder="Tìm kiếm cửa hàng..." class="store-search-input">
+                        <button id="clearFilter" class="clear-filter" title="Xóa bộ lọc">
+                            <i class="fas fa-times"></i>
+                        </button>
+                        <i class="fas fa-search search-icon"></i>
+                        <div id="storeDropdown" class="store-dropdown"></div>
+                    </div>
+                </div>
+                
+                <div id="storeList" class="store-list">
+                    <!-- Stores will be loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Category Screen -->
+        <div id="categoryScreen" class="screen">
+            <div class="container">
+                <div class="header">
+                    <button id="backToStoresBtn" class="btn-back">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h2 id="selectedStoreName">Chụp ảnh theo danh mục</h2>
+                </div>
+                <div id="categoryList" class="category-list">
+                    <!-- Categories will be loaded here -->
+                </div>
+                <button id="submitBtn" class="btn-submit" style="display: none;">
+                    <i class="fas fa-paper-plane"></i>
+                    Gửi kết quả
+                </button>
+            </div>
+        </div>
+
+        <!-- Admin Screen -->
+        <div id="adminScreen" class="screen">
+            <div class="container">
+                <div class="header">
+                    <button id="backToStoresFromAdminBtn" class="btn-back">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h2>Quản trị</h2>
+                </div>                <div class="admin-actions">
+                    <button id="exportBtn" class="btn-primary">
+                        <i class="fas fa-download"></i>
+                        Xuất Excel
+                    </button>
+                    <a href="/admin.html" class="btn-secondary" style="text-decoration: none; text-align: center;">
+                        <i class="fas fa-cog"></i>
+                        Trang quản trị nâng cao
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading overlay -->    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <p class="loading-text">Đang xử lý...</p>
+    </div>
+
+    <!-- Toast notifications -->
+    <div id="toast" class="toast"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>

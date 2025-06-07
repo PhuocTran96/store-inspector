@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="admin-styles.css">
+</head>
+<body>
+    <div class="admin-container">
+        <div id="loginSection">
+            <div class="login-form">
+                <div class="logo">
+                    <i class="fas fa-user-shield"></i>
+                    <h1>Admin Dashboard</h1>
+                </div>
+                <form id="adminLoginForm">
+                    <div class="form-group">
+                        <label for="adminUsername">Username</label>
+                        <input type="text" id="adminUsername" name="adminUsername" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="adminPassword">Password</label>
+                        <input type="password" id="adminPassword" name="adminPassword" required>
+                    </div>
+                    <button type="submit" class="btn-primary">
+                        <i class="fas fa-sign-in-alt"></i>
+                        Đăng nhập
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div id="dashboardSection" style="display: none;">
+            <div class="admin-header">
+                <h1><i class="fas fa-tachometer-alt"></i> Dashboard</h1>
+                <button id="logoutBtn" class="btn-secondary">
+                    <i class="fas fa-sign-out-alt"></i>
+                    Đăng xuất
+                </button>
+            </div>
+
+            <div class="admin-actions">
+                <button id="exportBtn" class="btn-primary">
+                    <i class="fas fa-file-excel"></i>
+                    Xuất Excel
+                </button>
+                <button id="refreshBtn" class="btn-secondary">
+                    <i class="fas fa-sync-alt"></i>
+                    Làm mới
+                </button>
+            </div>            <div class="filter-row">
+                <input type="text" id="filterUsername" placeholder="Lọc theo username" class="filter-input">
+                <input type="text" id="filterStore" placeholder="Lọc theo cửa hàng" class="filter-input">
+                <input type="text" id="filterCategory" placeholder="Lọc theo danh mục" class="filter-input">
+                <button id="applyFilterBtn" class="btn-secondary">
+                    <i class="fas fa-filter"></i>
+                    Lọc
+                </button>
+            </div>
+              <div class="filter-row">
+                <div class="date-filter-container">
+                    <label for="filterStartDate">Từ ngày:</label>
+                    <input type="date" id="filterStartDate" class="filter-input">
+                </div>
+                <div class="date-filter-container">
+                    <label for="filterEndDate">Đến ngày:</label>
+                    <input type="date" id="filterEndDate" class="filter-input">
+                </div>
+                <button id="resetFilterBtn" class="btn-secondary">
+                    <i class="fas fa-times"></i>
+                    Xóa bộ lọc
+                </button>
+            </div>
+
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Cửa hàng</th>
+                        <th>Danh mục</th>
+                        <th>Thời gian</th>
+                        <th>Hình ảnh</th>
+                        <th>Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody id="submissionsTableBody">
+                    <!-- Submissions will be loaded here -->
+                </tbody>
+            </table>
+
+            <div class="pagination" id="paginationContainer">
+                <!-- Pagination buttons will be added here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Preview Modal -->
+    <div id="imagePreviewModal" class="image-preview-modal">
+        <div class="modal-content">
+            <button class="modal-close" id="closeModal">
+                <i class="fas fa-times"></i>
+            </button>
+            <h2 id="modalTitle">Chi tiết kết quả</h2>
+            <p id="modalInfo"></p>
+            <p id="modalNote"></p>
+            <div class="image-grid" id="modalImageGrid">
+                <!-- Images will be added here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <p>Đang xử lý...</p>
+    </div>
+
+    <!-- Toast notifications -->
+    <div id="toast" class="toast"></div>
+
+    <script>
+        // Admin Dashboard JavaScript
+        document.addEventListener('DOMContentLoaded', function() {
+            // Elements
+            const loginSection = document.getElementById('loginSection');
+            const dashboardSection = document.getElementById('dashboardSection');
+            const adminLoginForm = document.getElementById('adminLoginForm');
+            const logoutBtn = document.getElementById('logoutBtn');
+            const exportBtn = document.getElementById('exportBtn');
+            const refreshBtn = document.getElementById('refreshBtn');
+            const submissionsTableBody = document.getElementById('submissionsTableBody');
+            const paginationContainer = document.getElementById('paginationContainer');
+            const imagePreviewModal = document.getElementById('imagePreviewModal');
+            const closeModal = document.getElementById('closeModal');
+            const modalTitle = document.getElementById('modalTitle');
+            const modalInfo = document.getElementById('modalInfo');
+            const modalNote = document.getElementById('modalNote');
+            const modalImageGrid = document.getElementById('modalImageGrid');            const filterUsername = document.getElementById('filterUsername');
+            const filterStore = document.getElementById('filterStore');
+            const filterCategory = document.getElementById('filterCategory');
+            const filterStartDate = document.getElementById('filterStartDate');
+            const filterEndDate = document.getElementById('filterEndDate');
+            const applyFilterBtn = document.getElementById('applyFilterBtn');
+            const resetFilterBtn = document.getElementById('resetFilterBtn');
+              // Variables
+            let submissions = [];
+            let currentPage = 1;
+            let itemsPerPage = 10;
+            let filters = {
+                username: '',
+                store: '',
+                category: '',
+                startDate: '',
+                endDate: ''
+            };
+            
+            // Check if already logged in
+            checkAdminSession();
+            
+            // Event Listeners
+            adminLoginForm.addEventListener('submit', handleAdminLogin);            logoutBtn.addEventListener('click', handleLogout);
+            exportBtn.addEventListener('click', handleExport);
+            refreshBtn.addEventListener('click', loadSubmissions);
+            closeModal.addEventListener('click', () => imagePreviewModal.style.display = 'none');
+            applyFilterBtn.addEventListener('click', applyFilters);
+            resetFilterBtn.addEventListener('click', resetFilters);
+            
+            // Functions
+            function showLoading(show = true) {
+                document.getElementById('loadingOverlay').classList.toggle('active', show);
+            }
+
+            function showToast(message, type = 'info') {
+                const toast = document.getElementById('toast');
+                toast.textContent = message;
+                toast.className = `toast show ${type}`;
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                }, 3000);
+            }
+            
+            async function checkAdminSession() {
+                try {
+                    const response = await fetch('/api/admin/check-session', {
+                        credentials: 'same-origin'
+                    });
+                    
+                    if (response.ok) {
+                        // User is already logged in as admin
+                        loginSection.style.display = 'none';
+                        dashboardSection.style.display = 'block';
+                        loadSubmissions();
+                    }
+                } catch (error) {
+                    console.error('Session check error:', error);
+                }
+            }
+            
+            async function handleAdminLogin(e) {
+                e.preventDefault();
+                showLoading(true);
+                
+                const username = document.getElementById('adminUsername').value;
+                const password = document.getElementById('adminPassword').value;
+                
+                // Check for hardcoded admin credentials
+                if (username === 'admin' && password === 'admin123') {
+                    try {
+                        // Log in via the API
+                        const response = await fetch('/api/login', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username: 'admin', password: 'admin123' }),
+                            credentials: 'same-origin'
+                        });
+                        
+                        if (response.ok) {
+                            loginSection.style.display = 'none';
+                            dashboardSection.style.display = 'block';
+                            loadSubmissions();
+                            showToast('Đăng nhập thành công!', 'success');
+                        } else {
+                            showToast('Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin đăng nhập.', 'error');
+                        }
+                    } catch (error) {
+                        console.error('Login error:', error);
+                        showToast('Lỗi kết nối', 'error');
+                    }
+                } else {
+                    showToast('Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin đăng nhập.', 'error');
+                }
+                
+                showLoading(false);
+            }
+            
+            async function handleLogout() {
+                showLoading(true);
+                
+                try {
+                    await fetch('/api/logout', { 
+                        method: 'POST',
+                        credentials: 'same-origin'
+                    });
+                    
+                    loginSection.style.display = 'block';
+                    dashboardSection.style.display = 'none';
+                    showToast('Đã đăng xuất', 'success');
+                } catch (error) {
+                    console.error('Logout error:', error);
+                    showToast('Lỗi đăng xuất', 'error');
+                }
+                
+                showLoading(false);
+            }
+              async function loadSubmissions() {
+                showLoading(true);
+                
+                try {
+                    const queryParams = new URLSearchParams({
+                        username: filters.username,
+                        store: filters.store,
+                        category: filters.category,
+                        startDate: filters.startDate,
+                        endDate: filters.endDate
+                    });
+                    
+                    const response = await fetch('/api/admin/submissions?' + queryParams, {
+                        credentials: 'same-origin'
+                    });
+                    
+                    if (response.ok) {
+                        submissions = await response.json();
+                        renderSubmissions();
+                        showToast('Đã tải dữ liệu', 'success');
+                    } else {
+                        showToast('Không thể tải dữ liệu', 'error');
+                    }
+                } catch (error) {
+                    console.error('Load submissions error:', error);
+                    showToast('Lỗi kết nối', 'error');
+                }
+                
+                showLoading(false);
+            }
+            
+            function renderSubmissions() {
+                submissionsTableBody.innerHTML = '';
+                
+                if (submissions.length === 0) {
+                    submissionsTableBody.innerHTML = `
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 30px;">
+                                <i class="fas fa-info-circle"></i> Không có dữ liệu nào
+                            </td>
+                        </tr>
+                    `;
+                    paginationContainer.innerHTML = '';
+                    return;
+                }
+                
+                // Calculate pagination
+                const totalPages = Math.ceil(submissions.length / itemsPerPage);
+                const startIndex = (currentPage - 1) * itemsPerPage;
+                const endIndex = Math.min(startIndex + itemsPerPage, submissions.length);
+                const paginatedSubmissions = submissions.slice(startIndex, endIndex);
+                  // Render submissions
+                paginatedSubmissions.forEach(submission => {
+                    // Format date as DD-MM-YYYY HH:MM:SS
+                    const date = new Date(submission.submittedAt);
+                    const formattedDate = `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+                    const imageCount = submission.images ? submission.images.length : 0;
+                    
+                    const row = document.createElement('tr');                    row.innerHTML = `
+                        <td>${submission.username || 'N/A'}</td>
+                        <td>${submission.storeName || 'N/A'}</td>
+                        <td>${submission.categoryName || 'N/A'}</td>
+                        <td>${formattedDate}</td>
+                        <td>${imageCount} ảnh</td>
+                        <td class="actions">
+                            <button class="btn-action btn-view" data-id="${submission._id}">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button class="btn-action btn-delete" data-id="${submission._id}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    `;
+                    
+                    submissionsTableBody.appendChild(row);
+                });
+                
+                // Add event listeners
+                document.querySelectorAll('.btn-view').forEach(btn => {
+                    btn.addEventListener('click', () => viewSubmission(btn.getAttribute('data-id')));
+                });
+                
+                document.querySelectorAll('.btn-delete').forEach(btn => {
+                    btn.addEventListener('click', () => deleteSubmission(btn.getAttribute('data-id')));
+                });
+                
+                // Render pagination
+                renderPagination(totalPages);
+            }
+            
+            function renderPagination(totalPages) {
+                paginationContainer.innerHTML = '';
+                
+                if (totalPages <= 1) return;
+                
+                // Previous button
+                const prevBtn = document.createElement('button');
+                prevBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+                prevBtn.disabled = currentPage === 1;
+                prevBtn.addEventListener('click', () => {
+                    if (currentPage > 1) {
+                        currentPage--;
+                        renderSubmissions();
+                    }
+                });
+                paginationContainer.appendChild(prevBtn);
+                
+                // Page buttons
+                for (let i = 1; i <= totalPages; i++) {
+                    const pageBtn = document.createElement('button');
+                    pageBtn.textContent = i;
+                    pageBtn.classList.toggle('active', i === currentPage);
+                    pageBtn.addEventListener('click', () => {
+                        currentPage = i;
+                        renderSubmissions();
+                    });
+                    paginationContainer.appendChild(pageBtn);
+                }
+                
+                // Next button
+                const nextBtn = document.createElement('button');
+                nextBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
+                nextBtn.disabled = currentPage === totalPages;
+                nextBtn.addEventListener('click', () => {
+                    if (currentPage < totalPages) {
+                        currentPage++;
+                        renderSubmissions();
+                    }
+                });
+                paginationContainer.appendChild(nextBtn);
+            }
+            
+            function viewSubmission(id) {
+                const submission = submissions.find(s => s._id === id);
+                if (!submission) return;
+                  modalTitle.textContent = `${submission.storeName} - ${submission.categoryName}`;
+                
+                // Format date for modal display
+                const modalDate = new Date(submission.submittedAt);
+                const modalFormattedDate = `${String(modalDate.getDate()).padStart(2, '0')}-${String(modalDate.getMonth() + 1).padStart(2, '0')}-${modalDate.getFullYear()} ${String(modalDate.getHours()).padStart(2, '0')}:${String(modalDate.getMinutes()).padStart(2, '0')}:${String(modalDate.getSeconds()).padStart(2, '0')}`;
+                
+                modalInfo.textContent = `Người dùng: ${submission.username} | Thời gian: ${modalFormattedDate}`;
+                modalNote.textContent = `Ghi chú: ${submission.note || 'Không có'}`;
+                
+                modalImageGrid.innerHTML = '';
+                if (submission.images && submission.images.length > 0) {
+                    submission.images.forEach(imageUrl => {
+                        const imageItem = document.createElement('div');
+                        imageItem.className = 'image-item';
+                        imageItem.innerHTML = `<img src="${imageUrl}" alt="Ảnh">`;
+                        modalImageGrid.appendChild(imageItem);
+                    });
+                } else {
+                    modalImageGrid.innerHTML = '<p>Không có hình ảnh</p>';
+                }
+                
+                imagePreviewModal.style.display = 'block';
+            }
+            
+            async function deleteSubmission(id) {
+                if (!confirm('Bạn có chắc chắn muốn xóa kết quả này?')) return;
+                
+                showLoading(true);
+                
+                try {
+                    const response = await fetch(`/api/admin/submissions/${id}`, {
+                        method: 'DELETE',
+                        credentials: 'same-origin'
+                    });
+                    
+                    if (response.ok) {
+                        // Remove from the local array
+                        submissions = submissions.filter(s => s._id !== id);
+                        renderSubmissions();
+                        showToast('Đã xóa kết quả', 'success');
+                    } else {
+                        showToast('Không thể xóa kết quả', 'error');
+                    }
+                } catch (error) {
+                    console.error('Delete error:', error);
+                    showToast('Lỗi kết nối', 'error');
+                }
+                
+                showLoading(false);
+            }
+              async function handleExport() {
+                showLoading(true);
+                
+                try {
+                    const queryParams = new URLSearchParams({
+                        username: filters.username,
+                        store: filters.store,
+                        category: filters.category,
+                        startDate: filters.startDate,
+                        endDate: filters.endDate
+                    });
+                    
+                    const response = await fetch('/api/admin/export?' + queryParams, {
+                        credentials: 'same-origin'
+                    });
+                    
+                    if (response.ok) {
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `submissions_${new Date().toISOString().split('T')[0]}.xlsx`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        window.URL.revokeObjectURL(url);
+                        showToast('Xuất file thành công!', 'success');
+                    } else {
+                        showToast('Xuất file thất bại', 'error');
+                    }
+                } catch (error) {
+                    console.error('Export error:', error);
+                    showToast('Lỗi kết nối', 'error');
+                }
+                
+                showLoading(false);
+            }
+              function applyFilters() {
+                filters.username = filterUsername.value.trim();
+                filters.store = filterStore.value.trim();
+                filters.category = filterCategory.value.trim();
+                filters.startDate = filterStartDate.value;
+                filters.endDate = filterEndDate.value;
+                
+                currentPage = 1; // Reset to first page
+                loadSubmissions();
+            }
+            
+            function resetFilters() {
+                filterUsername.value = '';
+                filterStore.value = '';
+                filterCategory.value = '';
+                filterStartDate.value = '';
+                filterEndDate.value = '';
+                
+                filters = {
+                    username: '',
+                    store: '',
+                    category: '',
+                    startDate: '',
+                    endDate: ''
+                };
+                
+                currentPage = 1;
+                loadSubmissions();
+                showToast('Đã xóa bộ lọc', 'success');
+            }
+        });
+    </script>
+</body>
+</html>

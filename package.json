@@ -1,0 +1,26 @@
+{
+  "name": "project-display-app",
+  "version": "1.0.0",
+  "description": "Mobile-friendly store inspection app",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^7.5.0",
+    "multer": "^1.4.5-lts.1",
+    "express-session": "^1.17.3",
+    "bcryptjs": "^2.4.3",
+    "csv-parser": "^3.0.0",
+    "fs": "^0.0.1-security",
+    "path": "^0.12.7",
+    "exceljs": "^4.3.0",
+    "cloudinary": "^1.41.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
