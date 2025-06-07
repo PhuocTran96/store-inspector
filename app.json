@@ -1,0 +1,50 @@
+{
+  "name": "Store Inspection App",
+  "description": "Mobile-friendly store inspection application with admin dashboard",
+  "repository": "https://github.com/yourusername/store-inspection-app",
+  "logo": "https://cdn.iconscout.com/icon/free/png-256/store-1922926-1628713.png",
+  "keywords": ["node", "express", "mongodb", "store-inspection", "admin-dashboard"],
+  "image": "heroku/nodejs",
+  "stack": "heroku-22",
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ],
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "addons": [
+    {
+      "plan": "mongolab:sandbox"
+    }
+  ],
+  "env": {
+    "NODE_ENV": {
+      "description": "Environment mode",
+      "value": "production"
+    },
+    "SESSION_SECRET": {
+      "description": "Secret key for session management",
+      "generator": "secret"
+    },
+    "MONGODB_URI": {
+      "description": "MongoDB connection string"
+    },
+    "CLOUDINARY_CLOUD_NAME": {
+      "description": "Cloudinary cloud name for image storage"
+    },
+    "CLOUDINARY_API_KEY": {
+      "description": "Cloudinary API key"
+    },
+    "CLOUDINARY_API_SECRET": {
+      "description": "Cloudinary API secret"
+    }
+  },
+  "scripts": {
+    "postdeploy": "echo 'Deployment completed successfully'"
+  }
+}

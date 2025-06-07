@@ -43,7 +43,7 @@ app.use(session({
   resave: true,
   saveUninitialized: true,
   cookie: { 
-    secure: false, // set to true in production with HTTPS
+    secure: process.env.NODE_ENV === 'production', // HTTPS in production
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
     httpOnly: true
   }
