@@ -95,9 +95,8 @@ async function loadData() {
     // Fallback to CSV if MongoDB fails
     await loadUsersFromCSV();
   }
-
-  // Load stores from CSV (will migrate this later)
-  await loadStoresFromCSV();
+  // Load stores from MongoDB
+  await loadStoresFromMongoDB();
   
   // Load categories from CSV (will migrate this later)
   await loadCategoriesFromCSV();
@@ -124,6 +123,58 @@ async function loadUsersFromCSV() {
         resolve();
       });
   });
+}
+
+async function loadStoresFromMongoDB() {
+  try {
+    console.log('🔄 Loading stores from MongoDB...');
+    const stores = await Store.find({});
+    storesData = stores.map(store => ({
+      'STT': store.stt,
+      'TDL name': store.tdlName,
+      'TDS name': store.tdsName,
+      'Promoter name': store.promoterName,
+      'Type shop': store.typeShop,
+      'Headcount invest': store.headcountInvest,
+      'Headcount active': store.headcountActive,
+      'Seniority (Ngày)': store.seniority,
+      'Store name': store.storeName,
+      'Store code (Fieldcheck)': store.storeCode,
+      'Dealer code': store.dealerCode,
+      'Address (No.Street, Ward/District, City, Province/State/Region)': store.address,
+      'Store type/ grade (ABC)': store.storeType,
+      'Channel': store.channel,
+      'Key cities': store.keyCities,
+      'Nearest Key City': store.nearestKeyCity,
+      'Ranking Commune': store.rankingCommune,
+      'Base': store.base,
+      'SHOP TIER': store.shopTier,
+      'Region': store.region,
+      'Province': store.province,
+      'City': store.city,
+      'District': store.district
+    }));
+    console.log(`✅ Stores loaded from MongoDB: ${storesData.length} stores`);
+    if (storesData.length > 0) {
+      console.log('🏪 First store TDL:', storesData[0]['TDL name']);
+      console.log('🏪 First store TDS:', storesData[0]['TDS name']);
+      console.log('🏪 First store name:', storesData[0]['Store name']);
+      
+      // Check for stores without store codes
+      const storesWithoutCodes = storesData.filter(store => !store['Store code (Fieldcheck)']);
+      if (storesWithoutCodes.length > 0) {
+        console.warn(`⚠️ Warning: ${storesWithoutCodes.length} stores don't have a store code`);
+      }
+    } else {
+      console.log('⚠️ No stores found in MongoDB, will try CSV fallback...');
+      await loadStoresFromCSV();
+    }
+  } catch (error) {
+    console.error('❌ Error loading stores from MongoDB:', error);
+    console.log('🔄 Falling back to CSV...');
+    // Fallback to CSV if MongoDB fails
+    await loadStoresFromCSV();
+  }
 }
 
 async function loadStoresFromCSV() {
