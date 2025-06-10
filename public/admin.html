@@ -114,10 +114,27 @@
     <div id="loadingOverlay" class="loading-overlay">
         <div class="loading-spinner"></div>
         <p>Đang xử lý...</p>
-    </div>
-
-    <!-- Toast notifications -->
+    </div>    <!-- Toast notifications -->
     <div id="toast" class="toast"></div>
+
+    <!-- Image Lightbox Modal -->
+    <div id="imageLightbox" class="image-lightbox">
+        <div class="lightbox-content">
+            <button class="lightbox-close" id="closeLightbox">
+                <i class="fas fa-times"></i>
+            </button>
+            <button class="lightbox-prev" id="prevImage">
+                <i class="fas fa-chevron-left"></i>
+            </button>
+            <button class="lightbox-next" id="nextImage">
+                <i class="fas fa-chevron-right"></i>
+            </button>
+            <img id="lightboxImage" src="" alt="Lightbox Image">
+            <div class="lightbox-counter">
+                <span id="currentImageIndex">1</span> / <span id="totalImages">1</span>
+            </div>
+        </div>
+    </div>
 
     <script>
         // Admin Dashboard JavaScript
@@ -136,14 +153,22 @@
             const modalTitle = document.getElementById('modalTitle');
             const modalInfo = document.getElementById('modalInfo');
             const modalNote = document.getElementById('modalNote');
-            const modalImageGrid = document.getElementById('modalImageGrid');            const filterUsername = document.getElementById('filterUsername');
+            const modalImageGrid = document.getElementById('modalImageGrid');
+            
+            // Lightbox elements
+            const imageLightbox = document.getElementById('imageLightbox');
+            const closeLightbox = document.getElementById('closeLightbox');
+            const prevImage = document.getElementById('prevImage');
+            const nextImage = document.getElementById('nextImage');
+            const lightboxImage = document.getElementById('lightboxImage');
+            const currentImageIndex = document.getElementById('currentImageIndex');
+            const totalImages = document.getElementById('totalImages');            const filterUsername = document.getElementById('filterUsername');
             const filterStore = document.getElementById('filterStore');
             const filterCategory = document.getElementById('filterCategory');
             const filterStartDate = document.getElementById('filterStartDate');
             const filterEndDate = document.getElementById('filterEndDate');
             const applyFilterBtn = document.getElementById('applyFilterBtn');
-            const resetFilterBtn = document.getElementById('resetFilterBtn');
-              // Variables
+            const resetFilterBtn = document.getElementById('resetFilterBtn');            // Variables
             let submissions = [];
             let currentPage = 1;
             let itemsPerPage = 10;
@@ -155,14 +180,42 @@
                 endDate: ''
             };
             
+            // Lightbox variables
+            let currentLightboxImages = [];
+            let currentLightboxIndex = 0;
+            
             // Check if already logged in
             checkAdminSession();
             
             // Event Listeners
             adminLoginForm.addEventListener('submit', handleAdminLogin);            logoutBtn.addEventListener('click', handleLogout);
-            exportBtn.addEventListener('click', handleExport);
-            refreshBtn.addEventListener('click', loadSubmissions);
+            exportBtn.addEventListener('click', handleExport);            refreshBtn.addEventListener('click', loadSubmissions);
             closeModal.addEventListener('click', () => imagePreviewModal.style.display = 'none');
+            
+            // Lightbox event listeners
+            closeLightbox.addEventListener('click', closeLightboxModal);
+            prevImage.addEventListener('click', showPreviousImage);
+            nextImage.addEventListener('click', showNextImage);
+            
+            // Close lightbox on background click
+            imageLightbox.addEventListener('click', (e) => {
+                if (e.target === imageLightbox) {
+                    closeLightboxModal();
+                }
+            });
+            
+            // Keyboard navigation for lightbox
+            document.addEventListener('keydown', (e) => {
+                if (imageLightbox.style.display === 'block') {
+                    if (e.key === 'Escape') {
+                        closeLightboxModal();
+                    } else if (e.key === 'ArrowLeft') {
+                        showPreviousImage();
+                    } else if (e.key === 'ArrowRight') {
+                        showNextImage();
+                    }
+                }
+            });
             applyFilterBtn.addEventListener('click', applyFilters);
             resetFilterBtn.addEventListener('click', resetFilters);
             
@@ -396,13 +449,18 @@
                 
                 modalInfo.textContent = `Người dùng: ${submission.username} | Thời gian: ${modalFormattedDate}`;
                 modalNote.textContent = `Ghi chú: ${submission.note || 'Không có'}`;
-                
-                modalImageGrid.innerHTML = '';
+                  modalImageGrid.innerHTML = '';
                 if (submission.images && submission.images.length > 0) {
-                    submission.images.forEach(imageUrl => {
+                    submission.images.forEach((imageUrl, index) => {
                         const imageItem = document.createElement('div');
                         imageItem.className = 'image-item';
-                        imageItem.innerHTML = `<img src="${imageUrl}" alt="Ảnh">`;
+                        imageItem.innerHTML = `<img src="${imageUrl}" alt="Ảnh ${index + 1}">`;
+                        
+                        // Add click event to open lightbox
+                        imageItem.addEventListener('click', () => {
+                            openLightbox(submission.images, index);
+                        });
+                        
                         modalImageGrid.appendChild(imageItem);
                     });
                 } else {
@@ -500,10 +558,69 @@
                     startDate: '',
                     endDate: ''
                 };
-                
-                currentPage = 1;
+                  currentPage = 1;
                 loadSubmissions();
                 showToast('Đã xóa bộ lọc', 'success');
+            }
+            
+            // Lightbox functions
+            function openLightbox(images, startIndex = 0) {
+                currentLightboxImages = images;
+                currentLightboxIndex = startIndex;
+                
+                updateLightboxImage();
+                updateLightboxControls();
+                
+                imageLightbox.style.display = 'block';
+                document.body.style.overflow = 'hidden'; // Prevent background scrolling
+            }
+            
+            function closeLightboxModal() {
+                imageLightbox.style.display = 'none';
+                document.body.style.overflow = ''; // Restore scrolling
+                currentLightboxImages = [];
+                currentLightboxIndex = 0;
+            }
+            
+            function showPreviousImage() {
+                if (currentLightboxImages.length <= 1) return;
+                
+                currentLightboxIndex = (currentLightboxIndex - 1 + currentLightboxImages.length) % currentLightboxImages.length;
+                updateLightboxImage();
+                updateLightboxControls();
+            }
+            
+            function showNextImage() {
+                if (currentLightboxImages.length <= 1) return;
+                
+                currentLightboxIndex = (currentLightboxIndex + 1) % currentLightboxImages.length;
+                updateLightboxImage();
+                updateLightboxControls();
+            }
+            
+            function updateLightboxImage() {
+                if (currentLightboxImages.length > 0) {
+                    lightboxImage.src = currentLightboxImages[currentLightboxIndex];
+                    
+                    // Add loading effect
+                    lightboxImage.style.opacity = '0';
+                    lightboxImage.onload = () => {
+                        lightboxImage.style.opacity = '1';
+                    };
+                }
+            }
+            
+            function updateLightboxControls() {
+                // Update counter
+                currentImageIndex.textContent = currentLightboxIndex + 1;
+                totalImages.textContent = currentLightboxImages.length;
+                
+                // Show/hide navigation based on number of images
+                if (currentLightboxImages.length <= 1) {
+                    imageLightbox.classList.add('lightbox-single');
+                } else {
+                    imageLightbox.classList.remove('lightbox-single');
+                }
             }
         });
     </script>
