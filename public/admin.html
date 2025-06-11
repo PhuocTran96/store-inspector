@@ -38,19 +38,22 @@
                     <i class="fas fa-sign-out-alt"></i>
                     Đăng xuất
                 </button>
-            </div>
-
-            <div class="admin-actions">
+            </div>            <div class="admin-actions">
                 <button id="exportBtn" class="btn-primary">
                     <i class="fas fa-file-excel"></i>
                     Xuất Excel
+                </button>
+                <button id="exportPptxBtn" class="btn-primary">
+                    <i class="fas fa-file-powerpoint"></i>
+                    Xuất PowerPoint
                 </button>
                 <button id="refreshBtn" class="btn-secondary">
                     <i class="fas fa-sync-alt"></i>
                     Làm mới
                 </button>
-            </div>            <div class="filter-row">
+            </div><div class="filter-row">
                 <input type="text" id="filterUsername" placeholder="Lọc theo username" class="filter-input">
+                <input type="text" id="filterTdsName" placeholder="Lọc theo TDS name" class="filter-input">
                 <input type="text" id="filterStore" placeholder="Lọc theo cửa hàng" class="filter-input">
                 <input type="text" id="filterCategory" placeholder="Lọc theo danh mục" class="filter-input">
                 <button id="applyFilterBtn" class="btn-secondary">
@@ -71,12 +74,11 @@
                     <i class="fas fa-times"></i>
                     Xóa bộ lọc
                 </button>
-            </div>
-
-            <table class="admin-table">
+            </div>            <table class="admin-table">
                 <thead>
                     <tr>
                         <th>Username</th>
+                        <th>TDS name</th>
                         <th>Cửa hàng</th>
                         <th>Danh mục</th>
                         <th>Thời gian</th>
@@ -143,8 +145,8 @@
             const loginSection = document.getElementById('loginSection');
             const dashboardSection = document.getElementById('dashboardSection');
             const adminLoginForm = document.getElementById('adminLoginForm');
-            const logoutBtn = document.getElementById('logoutBtn');
-            const exportBtn = document.getElementById('exportBtn');
+            const logoutBtn = document.getElementById('logoutBtn');            const exportBtn = document.getElementById('exportBtn');
+            const exportPptxBtn = document.getElementById('exportPptxBtn');
             const refreshBtn = document.getElementById('refreshBtn');
             const submissionsTableBody = document.getElementById('submissionsTableBody');
             const paginationContainer = document.getElementById('paginationContainer');
@@ -163,6 +165,7 @@
             const lightboxImage = document.getElementById('lightboxImage');
             const currentImageIndex = document.getElementById('currentImageIndex');
             const totalImages = document.getElementById('totalImages');            const filterUsername = document.getElementById('filterUsername');
+            const filterTdsName = document.getElementById('filterTdsName');
             const filterStore = document.getElementById('filterStore');
             const filterCategory = document.getElementById('filterCategory');
             const filterStartDate = document.getElementById('filterStartDate');
@@ -171,9 +174,9 @@
             const resetFilterBtn = document.getElementById('resetFilterBtn');            // Variables
             let submissions = [];
             let currentPage = 1;
-            let itemsPerPage = 10;
-            let filters = {
+            let itemsPerPage = 10;            let filters = {
                 username: '',
+                tdsName: '',
                 store: '',
                 category: '',
                 startDate: '',
@@ -186,10 +189,11 @@
             
             // Check if already logged in
             checkAdminSession();
-            
-            // Event Listeners
+              // Event Listeners
             adminLoginForm.addEventListener('submit', handleAdminLogin);            logoutBtn.addEventListener('click', handleLogout);
-            exportBtn.addEventListener('click', handleExport);            refreshBtn.addEventListener('click', loadSubmissions);
+            exportBtn.addEventListener('click', handleExport);
+            exportPptxBtn.addEventListener('click', handleExportPptx);
+            refreshBtn.addEventListener('click', loadSubmissions);
             closeModal.addEventListener('click', () => imagePreviewModal.style.display = 'none');
             
             // Lightbox event listeners
@@ -308,10 +312,10 @@
             }
               async function loadSubmissions() {
                 showLoading(true);
-                
-                try {
+                  try {
                     const queryParams = new URLSearchParams({
                         username: filters.username,
+                        tdsName: filters.tdsName,
                         store: filters.store,
                         category: filters.category,
                         startDate: filters.startDate,
@@ -339,11 +343,10 @@
             
             function renderSubmissions() {
                 submissionsTableBody.innerHTML = '';
-                
-                if (submissions.length === 0) {
+                  if (submissions.length === 0) {
                     submissionsTableBody.innerHTML = `
                         <tr>
-                            <td colspan="6" style="text-align: center; padding: 30px;">
+                            <td colspan="7" style="text-align: center; padding: 30px;">
                                 <i class="fas fa-info-circle"></i> Không có dữ liệu nào
                             </td>
                         </tr>
@@ -356,8 +359,7 @@
                 const totalPages = Math.ceil(submissions.length / itemsPerPage);
                 const startIndex = (currentPage - 1) * itemsPerPage;
                 const endIndex = Math.min(startIndex + itemsPerPage, submissions.length);
-                const paginatedSubmissions = submissions.slice(startIndex, endIndex);
-                  // Render submissions
+                const paginatedSubmissions = submissions.slice(startIndex, endIndex);                  // Render submissions
                 paginatedSubmissions.forEach(submission => {
                     // Format date as DD-MM-YYYY HH:MM:SS
                     const date = new Date(submission.submittedAt);
@@ -366,6 +368,7 @@
                     
                     const row = document.createElement('tr');                    row.innerHTML = `
                         <td>${submission.username || 'N/A'}</td>
+                        <td>${submission.tdsName || 'N/A'}</td>
                         <td>${submission.storeName || 'N/A'}</td>
                         <td>${submission.categoryName || 'N/A'}</td>
                         <td>${formattedDate}</td>
@@ -498,10 +501,10 @@
             }
               async function handleExport() {
                 showLoading(true);
-                
-                try {
+                  try {
                     const queryParams = new URLSearchParams({
                         username: filters.username,
+                        tdsName: filters.tdsName,
                         store: filters.store,
                         category: filters.category,
                         startDate: filters.startDate,
@@ -530,11 +533,51 @@
                     console.error('Export error:', error);
                     showToast('Lỗi kết nối', 'error');
                 }
+                  showLoading(false);
+            }
+
+            async function handleExportPptx() {
+                showLoading(true);
+                
+                try {
+                    const queryParams = new URLSearchParams({
+                        username: filters.username,
+                        tdsName: filters.tdsName,
+                        store: filters.store,
+                        category: filters.category,
+                        startDate: filters.startDate,
+                        endDate: filters.endDate
+                    });
+                    
+                    const response = await fetch('/api/admin/export-pptx?' + queryParams, {
+                        credentials: 'same-origin'
+                    });
+                    
+                    if (response.ok) {
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `submissions_${new Date().toISOString().split('T')[0]}.pptx`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        window.URL.revokeObjectURL(url);
+                        showToast('Xuất PowerPoint thành công!', 'success');
+                    } else {
+                        showToast('Xuất PowerPoint thất bại', 'error');
+                    }
+                } catch (error) {
+                    console.error('PowerPoint export error:', error);
+                    showToast('Lỗi kết nối', 'error');
+                }
                 
                 showLoading(false);
             }
-              function applyFilters() {
+
+            function applyFilters() {
                 filters.username = filterUsername.value.trim();
+                filters.tdsName = filterTdsName.value.trim();
                 filters.store = filterStore.value.trim();
                 filters.category = filterCategory.value.trim();
                 filters.startDate = filterStartDate.value;
@@ -543,9 +586,9 @@
                 currentPage = 1; // Reset to first page
                 loadSubmissions();
             }
-            
-            function resetFilters() {
+              function resetFilters() {
                 filterUsername.value = '';
+                filterTdsName.value = '';
                 filterStore.value = '';
                 filterCategory.value = '';
                 filterStartDate.value = '';
@@ -553,6 +596,7 @@
                 
                 filters = {
                     username: '',
+                    tdsName: '',
                     store: '',
                     category: '',
                     startDate: '',

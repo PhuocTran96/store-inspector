@@ -8,6 +8,8 @@ const fs = require('fs');
 const csv = require('csv-parser');
 const bcrypt = require('bcryptjs');
 const ExcelJS = require('exceljs');
+const PptxGenJS = require('pptxgenjs');
+const axios = require('axios');
 require('dotenv').config();
 
 const app = express();
@@ -512,23 +514,55 @@ app.get('/api/admin/export', async (req, res) => {
         filters.submittedAt.$lte = endDate;
       }
     }
+      console.log('Export filters:', filters);
     
-    console.log('Export filters:', filters);
-      const submissions = await Submission.find(filters).sort({ submittedAt: -1 });
+    let submissions = await Submission.find(filters).sort({ submittedAt: -1 });
+    
+    // Add TDS name to each submission and apply TDS name filter if provided
+    const submissionsWithTdsName = submissions.map(submission => {
+      let tdsName = '';
+      
+      // Try to find TDS name using storeId
+      if (submission.storeId) {
+        const store = storesData.find(s => s['Store code (Fieldcheck)'] === submission.storeId);
+        tdsName = store ? store['TDS name'] || '' : '';
+      }
+      
+      // If TDS name is still empty, try to find it by username
+      if (!tdsName && submission.username) {
+        const userStore = storesData.find(s => 
+          s['TDS name'] && s['TDS name'].trim() === submission.username.trim()
+        );
+        tdsName = userStore ? userStore['TDS name'] : '';
+      }
+      
+      return {
+        ...submission.toObject(),
+        tdsName: tdsName
+      };
+    });
+    
+    // Apply TDS name filter after adding TDS name to submissions
+    let filteredSubmissions = submissionsWithTdsName;
+    if (req.query.tdsName) {
+      const tdsNameRegex = new RegExp(req.query.tdsName, 'i');
+      filteredSubmissions = submissionsWithTdsName.filter(submission => 
+        tdsNameRegex.test(submission.tdsName || '')
+      );
+    }
+    
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Submissions');
 
     // Headers
-    const headers = ['Username', 'Store', 'Category', 'Note', 'Date'];
+    const headers = ['Username', 'TDS name', 'Store', 'Category', 'Note', 'Date'];
     for (let i = 1; i <= 8; i++) {
       headers.push(`Image ${i}`);
     }
     worksheet.addRow(headers);
-    
-    // Data rows
-    for (const submission of submissions) {
+      // Data rows - use filtered submissions
+    for (const submission of filteredSubmissions) {
       // Use storeName directly from the submission document
-      // If storeName is not available, try to find it using storeId as the store code
       let displayStoreName = submission.storeName || '';
       
       if (!displayStoreName && submission.storeId) {
@@ -536,12 +570,16 @@ app.get('/api/admin/export', async (req, res) => {
         displayStoreName = store ? store['Store name'] : 'Unknown Store';
       }
       
+      // TDS name is already computed and available in submission.tdsName
+      const tdsName = submission.tdsName || '';
+      
       // Format date as DD-MM-YYYY
       const submissionDate = submission.submittedAt ? new Date(submission.submittedAt) : new Date();
       const formattedDate = `${String(submissionDate.getDate()).padStart(2, '0')}-${String(submissionDate.getMonth() + 1).padStart(2, '0')}-${submissionDate.getFullYear()}`;
       
       const row = [
         submission.username,
+        tdsName,
         displayStoreName,
         submission.categoryName,
         submission.note,
@@ -562,10 +600,273 @@ app.get('/api/admin/export', async (req, res) => {
 
     // Send the Excel file
     await workbook.xlsx.write(res);
-    res.end();
-  } catch (error) {
+    res.end();  } catch (error) {
     console.error('Export error:', error);
     res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+// Helper function to convert image URL to base64
+async function convertImageUrlToBase64(imageUrl) {
+  try {
+    const response = await axios.get(imageUrl, { 
+      responseType: 'arraybuffer',
+      timeout: 10000 // 10 second timeout
+    });
+    const base64 = Buffer.from(response.data, 'binary').toString('base64');
+    const contentType = response.headers['content-type'] || 'image/jpeg';
+    return `data:${contentType};base64,${base64}`;
+  } catch (error) {
+    console.error(`Error converting image URL to base64: ${imageUrl}`, error.message);
+    return null;
+  }
+}
+
+// Admin export to PowerPoint
+app.get('/api/admin/export-pptx', async (req, res) => {
+  if (!req.session.user || req.session.user.role !== 'Admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  try {
+    // Apply filters if provided
+    const filters = {};
+    if (req.query.username) filters.username = new RegExp(req.query.username, 'i');
+    if (req.query.store) filters.storeName = new RegExp(req.query.store, 'i');
+    if (req.query.category) filters.categoryName = new RegExp(req.query.category, 'i');
+    
+    // Date range filtering
+    if (req.query.startDate || req.query.endDate) {
+      filters.submittedAt = {};
+      
+      if (req.query.startDate) {
+        const startDate = new Date(req.query.startDate);
+        startDate.setHours(0, 0, 0, 0);
+        filters.submittedAt.$gte = startDate;
+      }
+      
+      if (req.query.endDate) {
+        const endDate = new Date(req.query.endDate);
+        endDate.setHours(23, 59, 59, 999);
+        filters.submittedAt.$lte = endDate;
+      }
+    }
+    
+    console.log('PowerPoint Export filters:', filters);
+    
+    let submissions = await Submission.find(filters).sort({ submittedAt: -1 });
+    
+    // Add TDS name to each submission and apply TDS name filter if provided
+    const submissionsWithTdsName = submissions.map(submission => {
+      let tdsName = '';
+      
+      if (submission.storeId) {
+        const store = storesData.find(s => s['Store code (Fieldcheck)'] === submission.storeId);
+        tdsName = store ? store['TDS name'] || '' : '';
+      }
+      
+      if (!tdsName && submission.username) {
+        const userStore = storesData.find(s => 
+          s['TDS name'] && s['TDS name'].trim() === submission.username.trim()
+        );
+        tdsName = userStore ? userStore['TDS name'] : '';
+      }
+      
+      return {
+        ...submission.toObject(),
+        tdsName: tdsName
+      };
+    });
+    
+    // Apply TDS name filter
+    let filteredSubmissions = submissionsWithTdsName;
+    if (req.query.tdsName) {
+      const tdsNameRegex = new RegExp(req.query.tdsName, 'i');
+      filteredSubmissions = submissionsWithTdsName.filter(submission => 
+        tdsNameRegex.test(submission.tdsName || '')
+      );
+    }
+
+    // Create PowerPoint presentation
+    const pptx = new PptxGenJS();
+    
+    // Set presentation properties
+    pptx.author = 'Store Inspection App';
+    pptx.company = 'Your Company';
+    pptx.title = 'Store Inspection Results';
+    
+    // No image placeholder as base64 (simple gray rectangle with camera icon)
+    const noImageBase64 = 'data:image/svg+xml;base64,' + Buffer.from(`
+      <svg width="300" height="225" viewBox="0 0 300 225" xmlns="http://www.w3.org/2000/svg">
+        <rect width="300" height="225" fill="#f5f5f5" stroke="#cccccc" stroke-width="2"/>
+        <g transform="translate(120, 80)">
+          <rect x="15" y="20" width="50" height="35" rx="5" fill="#999999"/>
+          <rect x="10" y="15" width="60" height="45" rx="8" fill="none" stroke="#999999" stroke-width="2"/>
+          <circle cx="40" cy="37.5" r="10" fill="none" stroke="#999999" stroke-width="2"/>
+          <rect x="28" y="12" width="8" height="6" rx="2" fill="#999999"/>
+          <rect x="48" y="12" width="6" height="4" rx="1" fill="#999999"/>
+        </g>
+        <text x="150" y="140" text-anchor="middle" fill="#999999" font-family="Arial, sans-serif" font-size="14">No Image</text>
+        <text x="150" y="158" text-anchor="middle" fill="#999999" font-family="Arial, sans-serif" font-size="10">Available</text>
+      </svg>
+    `).toString('base64');
+
+    // Process each submission
+    for (const submission of filteredSubmissions) {
+      const displayStoreName = submission.storeName || 'Unknown Store';
+      const tdsName = submission.tdsName || 'N/A';
+      
+      // Format date as DD-MM-YYYY
+      const submissionDate = submission.submittedAt ? new Date(submission.submittedAt) : new Date();
+      const formattedDate = `${String(submissionDate.getDate()).padStart(2, '0')}-${String(submissionDate.getMonth() + 1).padStart(2, '0')}-${submissionDate.getFullYear()}`;
+      
+      const images = submission.images || [];
+      const totalImages = images.length;
+      
+      // Calculate number of slides needed (4 images per slide)
+      const slidesNeeded = Math.max(1, Math.ceil(totalImages / 4));
+      
+      for (let slideIndex = 0; slideIndex < slidesNeeded; slideIndex++) {
+        const slide = pptx.addSlide();
+        
+        // Add title area with store information
+        slide.addText([
+          { text: `${displayStoreName} | TDS: ${tdsName} | ${formattedDate}`, options: { fontSize: 16, bold: true, color: '333333' } }
+        ], {
+          x: 0.5, y: 0.3, w: 9, h: 0.5,
+          align: 'left',
+          valign: 'middle'
+        });
+        
+        slide.addText([
+          { text: `Category: ${submission.categoryName || 'N/A'} | Note: ${submission.note || 'No notes'}`, options: { fontSize: 12, color: '666666' } }
+        ], {
+          x: 0.5, y: 0.8, w: 9, h: 0.4,
+          align: 'left',
+          valign: 'middle'
+        });
+        
+        // Add images in 2x2 grid layout
+        const startImageIndex = slideIndex * 4;
+        const endImageIndex = Math.min(startImageIndex + 4, totalImages);
+        
+        // Define positions for 2x2 grid
+        const positions = [
+          { x: 0.5, y: 1.5, w: 4.25, h: 3.2 },  // Top left
+          { x: 5.25, y: 1.5, w: 4.25, h: 3.2 }, // Top right
+          { x: 0.5, y: 5.0, w: 4.25, h: 3.2 },  // Bottom left
+          { x: 5.25, y: 5.0, w: 4.25, h: 3.2 }  // Bottom right
+        ];        // Add images to slide
+        for (let i = 0; i < 4; i++) {
+          const imageIndex = startImageIndex + i;
+          const pos = positions[i];
+          
+          if (imageIndex < totalImages && images[imageIndex]) {
+            // Add actual image
+            try {
+              let imageData = images[imageIndex];
+              
+              // Check if image is a URL (Cloudinary) or base64 data
+              if (imageData.startsWith('http')) {
+                // Convert URL to base64
+                imageData = await convertImageUrlToBase64(imageData);
+              } else if (!imageData.startsWith('data:')) {
+                // Assume it's a JPEG if no header is present
+                imageData = 'data:image/jpeg;base64,' + imageData;
+              }
+              
+              if (imageData) {
+                slide.addImage({
+                  data: imageData,
+                  x: pos.x, y: pos.y, w: pos.w, h: pos.h,
+                  sizing: { type: 'contain', w: pos.w, h: pos.h }
+                });
+                
+                // Add image number
+                slide.addText(`Image ${imageIndex + 1}`, {
+                  x: pos.x, y: pos.y + pos.h + 0.1, w: pos.w, h: 0.3,
+                  align: 'center',
+                  fontSize: 10,
+                  color: '666666'
+                });
+              } else {
+                // Fallback to no image placeholder if conversion failed
+                slide.addImage({
+                  data: noImageBase64,
+                  x: pos.x, y: pos.y, w: pos.w, h: pos.h
+                });
+              }
+            } catch (imageError) {
+              console.error('Error adding image:', imageError);
+              // Fallback to no image placeholder
+              slide.addImage({
+                data: noImageBase64,
+                x: pos.x, y: pos.y, w: pos.w, h: pos.h
+              });
+            }
+          } else {
+            // Add no image placeholder
+            slide.addImage({
+              data: noImageBase64,
+              x: pos.x, y: pos.y, w: pos.w, h: pos.h
+            });
+          }
+        }
+        
+        // Add slide number if multiple slides for this submission
+        if (slidesNeeded > 1) {
+          slide.addText(`Page ${slideIndex + 1} of ${slidesNeeded}`, {
+            x: 8.5, y: 0.1, w: 1.5, h: 0.3,
+            align: 'right',
+            fontSize: 8,
+            color: '999999'
+          });
+        }
+      }
+    }
+
+    // If no submissions found, add a message slide
+    if (filteredSubmissions.length === 0) {
+      const slide = pptx.addSlide();
+      slide.addText('No submissions found with the applied filters.', {
+        x: 1, y: 3, w: 8, h: 2,
+        align: 'center',
+        valign: 'middle',
+        fontSize: 24,
+        color: '666666'
+      });
+    }    // Generate and send the PowerPoint file
+    try {
+      const pptxBuffer = await pptx.write('nodebuffer');
+      
+      // Set response headers
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+      res.setHeader('Content-Disposition', `attachment; filename=submissions_${new Date().toISOString().split('T')[0]}.pptx`);
+      
+      // Send the PowerPoint file
+      res.send(pptxBuffer);
+    } catch (writeError) {
+      console.error('PowerPoint write error:', writeError);
+      // Try alternative method
+      try {
+        const pptxData = await pptx.write('base64');
+        const pptxBuffer = Buffer.from(pptxData, 'base64');
+        
+        // Set response headers
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+        res.setHeader('Content-Disposition', `attachment; filename=submissions_${new Date().toISOString().split('T')[0]}.pptx`);
+        
+        // Send the PowerPoint file
+        res.send(pptxBuffer);
+      } catch (fallbackError) {
+        console.error('PowerPoint fallback error:', fallbackError);
+        res.status(500).json({ error: 'PowerPoint export failed' });
+      }
+    }
+    
+  } catch (error) {
+    console.error('PowerPoint Export error:', error);
+    res.status(500).json({ error: 'PowerPoint export failed' });
   }
 });
 
@@ -618,12 +919,44 @@ app.get('/api/admin/submissions', async (req, res) => {
         endDate.setHours(23, 59, 59, 999);
         filters.submittedAt.$lte = endDate;
       }
+    }    console.log('Submission filters:', filters);
+    
+    let submissions = await Submission.find(filters).sort({ submittedAt: -1 });
+    
+    // Add TDS name to each submission
+    const submissionsWithTdsName = submissions.map(submission => {
+      let tdsName = '';
+      
+      // Try to find TDS name using storeId
+      if (submission.storeId) {
+        const store = storesData.find(s => s['Store code (Fieldcheck)'] === submission.storeId);
+        tdsName = store ? store['TDS name'] || '' : '';
+      }
+      
+      // If TDS name is still empty, try to find it by username
+      if (!tdsName && submission.username) {
+        const userStore = storesData.find(s => 
+          s['TDS name'] && s['TDS name'].trim() === submission.username.trim()
+        );
+        tdsName = userStore ? userStore['TDS name'] : '';
+      }
+      
+      return {
+        ...submission.toObject(),
+        tdsName: tdsName
+      };
+    });
+    
+    // Apply TDS name filter after adding TDS name to submissions
+    let filteredSubmissions = submissionsWithTdsName;
+    if (req.query.tdsName) {
+      const tdsNameRegex = new RegExp(req.query.tdsName, 'i');
+      filteredSubmissions = submissionsWithTdsName.filter(submission => 
+        tdsNameRegex.test(submission.tdsName || '')
+      );
     }
     
-    console.log('Submission filters:', filters);
-    
-    const submissions = await Submission.find(filters).sort({ submittedAt: -1 });
-    res.json(submissions);
+    res.json(filteredSubmissions);
   } catch (error) {
     console.error('Get submissions error:', error);
     res.status(500).json({ error: 'Failed to retrieve submissions' });
