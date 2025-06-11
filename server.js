@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const session = require('express-session');
 const path = require('path');
 const multer = require('multer');
-const cloudinary = require('cloudinary').v2;
+const { upload, deleteFromS3, uploadBufferToS3 } = require('./config/s3Config');
 const fs = require('fs');
 const csv = require('csv-parser');
 const bcrypt = require('bcryptjs');
@@ -14,13 +14,6 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// Configure Cloudinary for image storage
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
-});
 
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://admin:xNo9bso92Yvt0r7y@cluster0.bglf6fm.mongodb.net/project_display_app', {
@@ -238,13 +231,6 @@ async function loadCategoriesFromCSV() {
   });
 }
 
-// Configure multer for image upload
-const storage = multer.memoryStorage();
-const upload = multer({ 
-  storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
-});
-
 // Routes
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -425,27 +411,13 @@ app.post('/api/submit', upload.array('images', 64), async (req, res) => {
     // Find the store name based on store code instead of STT
     const store = storesData.find(s => s['Store code (Fieldcheck)'] === storeId);
     const storeName = store ? store['Store name'] : 'Unknown Store';
+      console.log(`Processing submission for store: ${storeName} (Code: ${storeId})`);
     
-    console.log(`Processing submission for store: ${storeName} (Code: ${storeId})`);
-    
-    // Upload images to Cloudinary
+    // Images are now uploaded directly to S3 via multer-s3
     const imageUploads = [];
     if (req.files) {
       for (const file of req.files) {
-        try {
-          const result = await new Promise((resolve, reject) => {
-            cloudinary.uploader.upload_stream(
-              { resource_type: 'image' },
-              (error, result) => {
-                if (error) reject(error);
-                else resolve(result);
-              }
-            ).end(file.buffer);
-          });
-          imageUploads.push(result.secure_url);
-        } catch (error) {
-          console.error('Image upload error:', error);
-        }
+        imageUploads.push(file.location); // S3 URL from multer-s3
       }
     }
 
@@ -765,8 +737,7 @@ app.get('/api/admin/export-pptx', async (req, res) => {
             // Add actual image
             try {
               let imageData = images[imageIndex];
-              
-              // Check if image is a URL (Cloudinary) or base64 data
+                // Check if image is a URL (S3) or base64 data
               if (imageData.startsWith('http')) {
                 // Convert URL to base64
                 imageData = await convertImageUrlToBase64(imageData);
@@ -975,20 +946,15 @@ app.delete('/api/admin/submissions/:id', async (req, res) => {
     // Find the submission to get the image URLs
     const submission = await Submission.findById(submissionId);
     if (!submission) {
-      return res.status(404).json({ error: 'Submission not found' });
-    }
+      return res.status(404).json({ error: 'Submission not found' });    }
     
-    // Delete images from Cloudinary if needed
+    // Delete images from S3 if needed
     if (submission.images && submission.images.length > 0) {
       for (const imageUrl of submission.images) {
         try {
-          // Extract public_id from the Cloudinary URL
-          const publicId = imageUrl.split('/').pop().split('.')[0];
-          if (publicId) {
-            await cloudinary.uploader.destroy(publicId);
-          }
-        } catch (cloudinaryError) {
-          console.error('Error deleting image from Cloudinary:', cloudinaryError);
+          await deleteFromS3(imageUrl);
+        } catch (s3Error) {
+          console.error('Error deleting image from S3:', s3Error);
           // Continue with deletion even if some images fail to delete
         }
       }

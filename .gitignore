@@ -43,6 +43,9 @@ Thumbs.db
 # CSV data files (if they contain sensitive information)
 *.csv
 
+# AWS credentials
+nocoder01_accessKeys.csv
+
 # Backup files
 *.bak
 *.backup

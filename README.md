@@ -78,11 +78,11 @@ Vanilla JavaScript (ES6+)
 
 ### **Cloud Services**
 ```
-Cloudinary CDN
-├── Image Storage & Optimization
-├── Auto-format & Quality Adjustment
-├── CDN Distribution
-└── Bandwidth Optimization
+AWS S3
+├── Image Storage & Management
+├── Scalable Object Storage
+├── High Availability & Durability
+└── Cost-effective Storage Solution
 ```
 
 ---
