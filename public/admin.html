@@ -73,10 +73,35 @@
                 <button id="resetFilterBtn" class="btn-secondary">
                     <i class="fas fa-times"></i>
                     Xóa bộ lọc
-                </button>
-            </div>            <table class="admin-table">
+                </button>            </div>
+
+            <!-- Multi-delete controls -->
+            <div class="multi-select-controls" id="multiSelectControls" style="display: none;">
+                <div class="selected-count">
+                    <span id="selectedCount">0</span> mục đã chọn
+                </div>
+                <div class="multi-actions">
+                    <button id="selectAllBtn" class="btn-secondary">
+                        <i class="fas fa-check-square"></i>
+                        Chọn tất cả
+                    </button>
+                    <button id="deselectAllBtn" class="btn-secondary">
+                        <i class="fas fa-square"></i>
+                        Bỏ chọn tất cả
+                    </button>
+                    <button id="deleteSelectedBtn" class="btn-danger">
+                        <i class="fas fa-trash"></i>
+                        Xóa đã chọn
+                    </button>
+                </div>
+            </div>
+
+            <table class="admin-table">
                 <thead>
                     <tr>
+                        <th>
+                            <input type="checkbox" id="selectAllCheckbox" title="Chọn tất cả">
+                        </th>
                         <th>Username</th>
                         <th>TDS name</th>
                         <th>Cửa hàng</th>
@@ -169,10 +194,20 @@
             const filterStore = document.getElementById('filterStore');
             const filterCategory = document.getElementById('filterCategory');
             const filterStartDate = document.getElementById('filterStartDate');
-            const filterEndDate = document.getElementById('filterEndDate');
-            const applyFilterBtn = document.getElementById('applyFilterBtn');
-            const resetFilterBtn = document.getElementById('resetFilterBtn');            // Variables
+            const filterEndDate = document.getElementById('filterEndDate');            const applyFilterBtn = document.getElementById('applyFilterBtn');
+            const resetFilterBtn = document.getElementById('resetFilterBtn');
+
+            // Multi-select elements
+            const multiSelectControls = document.getElementById('multiSelectControls');
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            const selectAllBtn = document.getElementById('selectAllBtn');
+            const deselectAllBtn = document.getElementById('deselectAllBtn');
+            const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+            const selectedCount = document.getElementById('selectedCount');
+
+            // Variables
             let submissions = [];
+            let selectedSubmissions = new Set(); // Track selected submission IDs
             let currentPage = 1;
             let itemsPerPage = 10;            let filters = {
                 username: '',
@@ -219,9 +254,22 @@
                         showNextImage();
                     }
                 }
-            });
-            applyFilterBtn.addEventListener('click', applyFilters);
+            });            applyFilterBtn.addEventListener('click', applyFilters);
             resetFilterBtn.addEventListener('click', resetFilters);
+
+            // Multi-select event listeners
+            if (selectAllCheckbox) {
+                selectAllCheckbox.addEventListener('change', handleSelectAllCheckbox);
+            }
+            if (selectAllBtn) {
+                selectAllBtn.addEventListener('click', selectAllSubmissions);
+            }
+            if (deselectAllBtn) {
+                deselectAllBtn.addEventListener('click', deselectAllSubmissions);
+            }
+            if (deleteSelectedBtn) {
+                deleteSelectedBtn.addEventListener('click', deleteSelectedSubmissions);
+            }
             
             // Functions
             function showLoading(show = true) {
@@ -340,13 +388,16 @@
                 
                 showLoading(false);
             }
-            
-            function renderSubmissions() {
+              function renderSubmissions() {
                 submissionsTableBody.innerHTML = '';
+                
+                // Clear selected submissions when rendering new data
+                selectedSubmissions.clear();
+                updateMultiSelectControls();
                   if (submissions.length === 0) {
                     submissionsTableBody.innerHTML = `
                         <tr>
-                            <td colspan="7" style="text-align: center; padding: 30px;">
+                            <td colspan="8" style="text-align: center; padding: 30px;">
                                 <i class="fas fa-info-circle"></i> Không có dữ liệu nào
                             </td>
                         </tr>
@@ -367,6 +418,9 @@
                     const imageCount = submission.images ? submission.images.length : 0;
                     
                     const row = document.createElement('tr');                    row.innerHTML = `
+                        <td>
+                            <input type="checkbox" class="row-checkbox" data-id="${submission._id}">
+                        </td>
                         <td>${submission.username || 'N/A'}</td>
                         <td>${submission.tdsName || 'N/A'}</td>
                         <td>${submission.storeName || 'N/A'}</td>
@@ -385,14 +439,18 @@
                     
                     submissionsTableBody.appendChild(row);
                 });
-                
-                // Add event listeners
+                  // Add event listeners
                 document.querySelectorAll('.btn-view').forEach(btn => {
                     btn.addEventListener('click', () => viewSubmission(btn.getAttribute('data-id')));
                 });
                 
                 document.querySelectorAll('.btn-delete').forEach(btn => {
                     btn.addEventListener('click', () => deleteSubmission(btn.getAttribute('data-id')));
+                });
+
+                // Add checkbox event listeners
+                document.querySelectorAll('.row-checkbox').forEach(checkbox => {
+                    checkbox.addEventListener('change', handleRowCheckboxChange);
                 });
                 
                 // Render pagination
@@ -491,9 +549,153 @@
                         showToast('Đã xóa kết quả', 'success');
                     } else {
                         showToast('Không thể xóa kết quả', 'error');
+                    }                } catch (error) {
+                    console.error('Delete error:', error);
+                    showToast('Lỗi kết nối', 'error');
+                }
+                
+                showLoading(false);
+            }
+
+            // Multi-select functions
+            function handleRowCheckboxChange(event) {
+                const checkbox = event.target;
+                const submissionId = checkbox.getAttribute('data-id');
+                
+                if (checkbox.checked) {
+                    selectedSubmissions.add(submissionId);
+                } else {
+                    selectedSubmissions.delete(submissionId);
+                }
+                
+                updateMultiSelectControls();
+            }
+
+            function handleSelectAllCheckbox(event) {
+                const isChecked = event.target.checked;
+                const rowCheckboxes = document.querySelectorAll('.row-checkbox');
+                
+                rowCheckboxes.forEach(checkbox => {
+                    checkbox.checked = isChecked;
+                    const submissionId = checkbox.getAttribute('data-id');
+                    
+                    if (isChecked) {
+                        selectedSubmissions.add(submissionId);
+                    } else {
+                        selectedSubmissions.delete(submissionId);
+                    }
+                });
+                
+                updateMultiSelectControls();
+            }
+
+            function selectAllSubmissions() {
+                const rowCheckboxes = document.querySelectorAll('.row-checkbox');
+                rowCheckboxes.forEach(checkbox => {
+                    checkbox.checked = true;
+                    const submissionId = checkbox.getAttribute('data-id');
+                    selectedSubmissions.add(submissionId);
+                });
+                
+                // Update master checkbox
+                const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+                if (selectAllCheckbox) {
+                    selectAllCheckbox.checked = true;
+                }
+                
+                updateMultiSelectControls();
+            }
+
+            function deselectAllSubmissions() {
+                const rowCheckboxes = document.querySelectorAll('.row-checkbox');
+                rowCheckboxes.forEach(checkbox => {
+                    checkbox.checked = false;
+                    const submissionId = checkbox.getAttribute('data-id');
+                    selectedSubmissions.delete(submissionId);
+                });
+                
+                // Update master checkbox
+                const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+                if (selectAllCheckbox) {
+                    selectAllCheckbox.checked = false;
+                }
+                
+                updateMultiSelectControls();
+            }
+
+            function updateMultiSelectControls() {
+                const selectedCount = selectedSubmissions.size;
+                const multiSelectControls = document.getElementById('multiSelectControls');
+                const selectedCountElement = document.getElementById('selectedCount');
+                
+                if (selectedCount > 0) {
+                    multiSelectControls.style.display = 'flex';
+                    selectedCountElement.textContent = selectedCount;
+                } else {
+                    multiSelectControls.style.display = 'none';
+                }
+
+                // Update master checkbox state
+                const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+                const rowCheckboxes = document.querySelectorAll('.row-checkbox');
+                const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+                
+                if (selectAllCheckbox) {
+                    if (checkedBoxes.length === 0) {
+                        selectAllCheckbox.checked = false;
+                        selectAllCheckbox.indeterminate = false;
+                    } else if (checkedBoxes.length === rowCheckboxes.length) {
+                        selectAllCheckbox.checked = true;
+                        selectAllCheckbox.indeterminate = false;
+                    } else {
+                        selectAllCheckbox.checked = false;
+                        selectAllCheckbox.indeterminate = true;
+                    }
+                }
+            }
+
+            async function deleteSelectedSubmissions() {
+                if (selectedSubmissions.size === 0) {
+                    showToast('Vui lòng chọn ít nhất một mục để xóa', 'warning');
+                    return;
+                }
+
+                const confirmMessage = `Bạn có chắc chắn muốn xóa ${selectedSubmissions.size} kết quả đã chọn?`;
+                if (!confirm(confirmMessage)) return;
+                
+                showLoading(true);
+                
+                try {
+                    const response = await fetch('/api/admin/submissions/bulk-delete', {
+                        method: 'DELETE',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            ids: Array.from(selectedSubmissions)
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const result = await response.json();
+                        
+                        // Remove deleted submissions from local array
+                        submissions = submissions.filter(s => !selectedSubmissions.has(s._id));
+                        
+                        // Clear selection
+                        selectedSubmissions.clear();
+                        
+                        // Re-render table
+                        renderSubmissions();
+                        
+                        showToast(`Đã xóa thành công ${result.deletedCount} kết quả`, 'success');
+                    } else {
+                        const error = await response.json();
+                        showToast(error.message || 'Không thể xóa các kết quả đã chọn', 'error');
                     }
                 } catch (error) {
-                    console.error('Delete error:', error);
+                    console.error('Bulk delete error:', error);
                     showToast('Lỗi kết nối', 'error');
                 }
                 

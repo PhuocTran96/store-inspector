@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lịch sử hoạt động - Store Inspection</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .history-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            color: white;
+        }
+
+        .history-header .btn-primary {
+            cursor: pointer;
+            user-select: none;
+            pointer-events: auto;
+            z-index: 10;
+            position: relative;
+        }
+
+        .history-header .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .history-header .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .history-session {
+            background: white;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .session-header {
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .session-info h3 {
+            margin: 0 0 5px 0;
+            color: #2c3e50;
+        }
+
+        .session-meta {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+
+        .session-status {
+            display: flex;
+            gap: 10px;
+        }
+
+        .status-badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .status-before {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .status-after {
+            background: #e8f5e8;
+            color: #388e3c;
+        }
+
+        .status-incomplete {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+
+        .session-content {
+            padding: 20px;
+        }
+
+        .categories-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .category-comparison {
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .category-title {
+            background: #495057;
+            color: white;
+            padding: 12px 16px;
+            font-weight: 500;
+            text-align: center;
+        }
+
+        .comparison-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            min-height: 200px;
+        }
+
+        .before-section, .after-section {
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .before-section {
+            background: #f8f9fa;
+            border-right: 1px solid #e9ecef;
+        }
+
+        .after-section {
+            background: #ffffff;
+        }
+
+        .section-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .before-section .section-title {
+            color: #1976d2;
+        }
+
+        .after-section .section-title {
+            color: #388e3c;
+        }
+
+        .images-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .history-image {
+            aspect-ratio: 1;
+            border-radius: 6px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .history-image:hover {
+            transform: scale(1.05);
+        }
+
+        .history-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .no-images {
+            color: #6c757d;
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .category-note {
+            font-size: 0.85rem;
+            color: #6c757d;
+            background: rgba(0, 0, 0, 0.05);
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: auto;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        .pagination button {
+            padding: 8px 12px;
+            border: 1px solid #dee2e6;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .pagination button:hover:not(:disabled) {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .pagination button.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .empty-history {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+        }
+
+        .empty-history i {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            opacity: 0.3;
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            .history-header {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+
+            .session-header {
+                flex-direction: column;
+                gap: 10px;
+                text-align: center;
+            }
+
+            .comparison-container {
+                grid-template-columns: 1fr;
+            }
+
+            .before-section {
+                border-right: none;
+                border-bottom: 1px solid #e9ecef;
+            }
+
+            .categories-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Lightbox styles */
+        .lightbox {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .lightbox img {
+            max-width: 90%;
+            max-height: 90%;
+            object-fit: contain;
+        }
+
+        .lightbox-close {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            color: white;
+            font-size: 2rem;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="history-container">
+        <div class="history-header">
+            <div>
+                <h1><i class="fas fa-history"></i> Lịch sử hoạt động</h1>
+                <p>Xem lại các lần kiểm tra cửa hàng của bạn</p>
+            </div>            <button id="backButton" class="btn-primary">
+                <i class="fas fa-arrow-left"></i> Quay lại
+            </button>
+        </div>        <div id="historyContent">
+            <!-- Content will be populated by JavaScript -->
+        </div>
+
+        <div id="pagination" class="pagination"></div>
+    </div>
+
+    <!-- Lightbox -->
+    <div id="lightbox" class="lightbox">
+        <span class="lightbox-close">&times;</span>
+        <img id="lightboxImage" src="" alt="Image">
+    </div>
+
+    <!-- Loading overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p class="loading-text">Đang tải...</p>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+
+    <script>
+        let currentPage = 1;
+        let totalPages = 1;
+
+        async function loadHistory(page = 1) {
+            try {
+                showLoading(true);
+                const response = await fetch(`/api/user/history?page=${page}&limit=10`);
+                
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        window.location.href = '/';
+                        return;
+                    }
+                    throw new Error('Failed to load history');
+                }
+
+                const data = await response.json();
+                renderHistory(data.history);
+                renderPagination(data.pagination);
+                
+            } catch (error) {
+                console.error('Error loading history:', error);
+                showToast('Không thể tải lịch sử', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function renderHistory(historyData) {
+            const container = document.getElementById('historyContent');
+            
+            if (historyData.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-history">
+                        <i class="fas fa-clock"></i>
+                        <h3>Chưa có lịch sử hoạt động</h3>
+                        <p>Bạn chưa thực hiện kiểm tra nào. Hãy bắt đầu kiểm tra cửa hàng đầu tiên!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = historyData.map(session => {
+                const hasAfter = session.after.length > 0;
+                const statusBadges = [
+                    '<span class="status-badge status-before">Before</span>',
+                    hasAfter ? '<span class="status-badge status-after">After</span>' : '<span class="status-badge status-incomplete">Chưa hoàn thành</span>'
+                ].join('');
+
+                // Group categories by categoryId
+                const categoryMap = {};
+                session.before.forEach(submission => {
+                    if (!categoryMap[submission.categoryId]) {
+                        categoryMap[submission.categoryId] = {
+                            categoryId: submission.categoryId,
+                            categoryName: submission.categoryName,
+                            before: submission,
+                            after: null
+                        };
+                    }
+                });
+
+                session.after.forEach(submission => {
+                    if (categoryMap[submission.categoryId]) {
+                        categoryMap[submission.categoryId].after = submission;
+                    }
+                });
+
+                const categoriesHtml = Object.values(categoryMap).map(category => `
+                    <div class="category-comparison">
+                        <div class="category-title">${category.categoryName}</div>
+                        <div class="comparison-container">
+                            <div class="before-section">
+                                <div class="section-title">Before</div>
+                                ${category.before ? `
+                                    <div class="images-grid">
+                                        ${category.before.images.map((image, index) => `
+                                            <div class="history-image" onclick="openLightbox('${image}')">
+                                                <img src="${image}" alt="Before ${index + 1}">
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                    ${category.before.note ? `<div class="category-note">${category.before.note}</div>` : ''}
+                                ` : '<div class="no-images">Không có ảnh</div>'}
+                            </div>
+                            <div class="after-section">
+                                <div class="section-title">After</div>
+                                ${category.after ? `
+                                    <div class="images-grid">
+                                        ${category.after.images.map((image, index) => `
+                                            <div class="history-image" onclick="openLightbox('${image}')">
+                                                <img src="${image}" alt="After ${index + 1}">
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                    ${category.after.note ? `<div class="category-note">${category.after.note}</div>` : ''}
+                                ` : '<div class="no-images">Chưa có ảnh sau cải thiện</div>'}
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+
+                return `
+                    <div class="history-session">
+                        <div class="session-header">
+                            <div class="session-info">
+                                <h3>${session.storeName}</h3>
+                                <div class="session-meta">
+                                    <i class="fas fa-calendar"></i> ${new Date(session.submittedAt).toLocaleString('vi-VN')}
+                                    <span style="margin-left: 15px;"><i class="fas fa-store"></i> ${session.storeId}</span>
+                                </div>
+                            </div>
+                            <div class="session-status">
+                                ${statusBadges}
+                            </div>
+                        </div>
+                        <div class="session-content">
+                            <div class="categories-grid">
+                                ${categoriesHtml}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderPagination(pagination) {
+            const container = document.getElementById('pagination');
+            currentPage = pagination.currentPage;
+            totalPages = pagination.totalPages;
+
+            if (totalPages <= 1) {
+                container.innerHTML = '';
+                return;
+            }
+
+            let paginationHtml = '';
+
+            // Previous button
+            paginationHtml += `<button ${currentPage === 1 ? 'disabled' : ''} onclick="loadHistory(${currentPage - 1})">
+                <i class="fas fa-chevron-left"></i>
+            </button>`;
+
+            // Page numbers
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === currentPage) {
+                    paginationHtml += `<button class="active">${i}</button>`;
+                } else {
+                    paginationHtml += `<button onclick="loadHistory(${i})">${i}</button>`;
+                }
+            }
+
+            // Next button
+            paginationHtml += `<button ${currentPage === totalPages ? 'disabled' : ''} onclick="loadHistory(${currentPage + 1})">
+                <i class="fas fa-chevron-right"></i>
+            </button>`;
+
+            container.innerHTML = paginationHtml;
+        }
+
+        function openLightbox(imageSrc) {
+            const lightbox = document.getElementById('lightbox');
+            const lightboxImage = document.getElementById('lightboxImage');
+            
+            lightboxImage.src = imageSrc;
+            lightbox.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeLightbox() {
+            const lightbox = document.getElementById('lightbox');
+            lightbox.style.display = 'none';
+            document.body.style.overflow = '';
+        }        async function goBack() {
+            console.log('Back button clicked');
+            try {
+                // Show loading while navigating
+                showLoading(true);
+                
+                // Check URL parameters to see where we came from
+                const urlParams = new URLSearchParams(window.location.search);
+                const referrer = urlParams.get('ref');
+                console.log('Referrer parameter:', referrer);
+                
+                // If this was opened in a new tab/window from the main app
+                if (window.opener && !window.opener.closed) {
+                    console.log('Closing window and returning to opener');
+                    // Try to focus the opener window
+                    try {
+                        window.opener.focus();
+                    } catch (focusError) {
+                        console.log('Could not focus opener window');
+                    }
+                    window.close();
+                    return;
+                }
+                
+                // Check if there's history to go back to and it's from the same origin
+                if (document.referrer && document.referrer.includes(window.location.origin) && document.referrer !== window.location.href) {
+                    console.log('Going back in history to:', document.referrer);
+                    window.history.back();
+                    // Set a timeout to fallback if history.back() doesn't work
+                    setTimeout(() => {
+                        if (document.visibilityState === 'visible') {
+                            console.log('History.back() might have failed, redirecting manually');
+                            redirectToApp();
+                        }
+                    }, 1000);
+                    return;
+                }
+                
+                // Fallback to main app redirect
+                await redirectToApp();
+                
+            } catch (error) {
+                console.error('Error navigating back:', error);
+                showLoading(false);
+                // Last resort: redirect to main page
+                window.location.href = '/';
+            }
+        }
+
+        async function redirectToApp() {
+            try {
+                // Check if user is still authenticated before redirecting
+                const response = await fetch('/api/check-session');
+                if (response.ok) {
+                    // User is authenticated, redirect to main app
+                    console.log('User authenticated, redirecting to main app');
+                    window.location.href = '/';
+                } else {
+                    // Session expired, redirect to login
+                    console.log('Session expired, redirecting to login');
+                    window.location.href = '/';
+                }
+            } catch (error) {
+                console.error('Error checking session:', error);
+                window.location.href = '/';
+            }
+        }
+
+        function showLoading(show = true) {
+            document.getElementById('loadingOverlay').classList.toggle('active', show);
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast show ${type}`;
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // Event listeners
+        document.getElementById('lightbox').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeLightbox();
+            }
+        });
+
+        document.querySelector('.lightbox-close').addEventListener('click', closeLightbox);
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeLightbox();
+            }
+        });        // Load history on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Show initial loading state
+            document.getElementById('historyContent').innerHTML = `
+                <div style="text-align: center; padding: 60px 20px; color: #6c757d;">
+                    <i class="fas fa-spinner fa-spin fa-2x" style="margin-bottom: 20px; opacity: 0.5;"></i>
+                    <p>Đang tải lịch sử hoạt động...</p>
+                </div>
+            `;
+            
+            loadHistory();
+            
+            // Add event listener for back button
+            const backButton = document.getElementById('backButton');
+            if (backButton) {
+                console.log('Back button found, adding event listener');
+                backButton.addEventListener('click', function(e) {
+                    console.log('Back button clicked via event listener');
+                    e.preventDefault();
+                    goBack();
+                });
+            } else {
+                console.error('Back button not found!');
+            }
+        });
+    </script>
+</body>
+</html>

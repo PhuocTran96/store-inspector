@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const session = require('express-session');
 const path = require('path');
 const multer = require('multer');
+require('dotenv').config();
 const { upload, deleteFromS3, uploadBufferToS3 } = require('./config/s3Config');
 const fs = require('fs');
 const csv = require('csv-parser');
@@ -10,7 +11,6 @@ const bcrypt = require('bcryptjs');
 const ExcelJS = require('exceljs');
 const PptxGenJS = require('pptxgenjs');
 const axios = require('axios');
-require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -401,25 +401,107 @@ app.get('/api/store-names', (req, res) => {
 });
 
 // Submit inspection data
-app.post('/api/submit', upload.array('images', 64), async (req, res) => {
+app.post('/api/submit', (req, res, next) => {
+  // Add error handling for multer
+  const handleMulterUpload = (req, res, next) => {
+    upload.array('images', 64)(req, res, (err) => {
+      if (err) {
+        console.error('Multer upload error:', err);
+        // Continue without file upload if multer fails
+        console.log('Continuing without file upload due to multer error');
+        req.files = []; // Set empty files array
+        next();
+      } else {
+        next();
+      }
+    });
+  };
+
+  // Check if files are being uploaded
+  if (req.headers['content-type'] && req.headers['content-type'].includes('multipart/form-data')) {
+    // Use multer for file uploads with error handling
+    handleMulterUpload(req, res, next);
+  } else {
+    // Skip multer for JSON submissions (no files)
+    next();
+  }
+}, async (req, res) => {
   if (!req.session.user) {
     return res.status(401).json({ error: 'Not authenticated' });
-  }  try {
-    const { storeId, submissions } = req.body;
+  }
+  try {
+    const { storeId, submissions, submissionType, sessionId } = req.body;
     const submissionsData = JSON.parse(submissions);
+    
+    console.log(`Processing ${submissionType} submission for storeId: ${storeId}, sessionId: ${sessionId}, user: ${req.session.user.username}`);
+    console.log('Submissions data:', submissionsData);
     
     // Find the store name based on store code instead of STT
     const store = storesData.find(s => s['Store code (Fieldcheck)'] === storeId);
     const storeName = store ? store['Store name'] : 'Unknown Store';
-      console.log(`Processing submission for store: ${storeName} (Code: ${storeId})`);
     
-    // Images are now uploaded directly to S3 via multer-s3
+    console.log(`Processing ${submissionType} submission for store: ${storeName} (Code: ${storeId})`);
+    
+    // Handle images - first try from multer-s3, then fall back to base64 processing
     const imageUploads = [];
-    if (req.files) {
+    
+    if (req.files && req.files.length > 0) {
+      // Images were uploaded via multer-s3
       for (const file of req.files) {
         imageUploads.push(file.location); // S3 URL from multer-s3
       }
+      console.log(`✅ Found ${imageUploads.length} uploaded files from multer-s3`);
+    } else {
+      // No files from multer, check for base64 images in the body
+      console.log('🔄 No multer files found, processing base64 images from request body...');
+      
+      // Extract base64 images from submission data if they exist
+      let totalImageCount = 0;
+      submissionsData.forEach(submission => {
+        totalImageCount += submission.imageCount || 0;
+      });
+      
+      if (totalImageCount > 0) {
+        console.log(`📸 Expected ${totalImageCount} images based on submission data`);
+        
+        // Process base64 images if they were sent separately
+        // Note: We'll need to modify the frontend to send base64 images in the request body
+        if (req.body.base64Images && Array.isArray(req.body.base64Images)) {
+          console.log(`🔄 Processing ${req.body.base64Images.length} base64 images...`);
+          
+          for (let i = 0; i < req.body.base64Images.length; i++) {
+            try {
+              const base64Image = req.body.base64Images[i];
+              
+              // Convert base64 to buffer
+              const matches = base64Image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+              if (matches && matches.length === 3) {
+                const contentType = matches[1];
+                const base64Data = matches[2];
+                const buffer = Buffer.from(base64Data, 'base64');
+                
+                // Upload to S3
+                const filename = `image-${Date.now()}-${i}.jpg`;
+                const s3Url = await uploadBufferToS3(buffer, filename, contentType);
+                imageUploads.push(s3Url);
+                
+                console.log(`✅ Uploaded base64 image ${i + 1} to S3: ${s3Url}`);
+              } else {
+                console.warn(`⚠️ Invalid base64 image format at index ${i}`);
+              }
+            } catch (uploadError) {
+              console.error(`❌ Error uploading base64 image ${i}:`, uploadError);
+              // Store base64 as fallback if S3 upload fails
+              imageUploads.push(req.body.base64Images[i]);
+            }
+          }
+        } else {
+          console.log('ℹ️ No base64Images found in request body, submissions will be saved without images');
+        }
+      }
     }
+
+    console.log(`📤 Final image count: ${imageUploads.length} images ready for storage`);
 
     // Process submissions and save to database
     let imageIndex = 0;
@@ -430,28 +512,157 @@ app.post('/api/submit', upload.array('images', 64), async (req, res) => {
           categoryImages.push(imageUploads[imageIndex]);
           imageIndex++;
         }
-      }      const newSubmission = new Submission({
+      }
+
+      console.log('Creating submission with data:', {
         username: req.session.user.username,
-        storeId: storeId, // Now using store code instead of STT
+        storeId: storeId,
         storeName: storeName,
         categoryId: submission.categoryId,
         categoryName: submission.categoryName,
         note: submission.note,
         images: categoryImages,
-        submittedAt: new Date()      });
+        submissionType: submissionType || 'before',
+        sessionId: sessionId || new Date().toISOString()
+      });      // Add validation for required fields
+      console.log(`Creating submission with:`, {
+        username: req.session.user.username,
+        storeId: storeId,
+        storeName: storeName,
+        categoryId: submission.categoryId,
+        categoryName: submission.categoryName,
+        submissionType: submissionType || 'before',
+        sessionId: sessionId || new Date().toISOString()
+      });
+
+      const newSubmission = new Submission({
+        username: req.session.user.username,
+        storeId: storeId,
+        storeName: storeName,
+        categoryId: submission.categoryId,
+        categoryName: submission.categoryName,
+        note: submission.note || '', // Provide default empty string
+        images: categoryImages,
+        submissionType: submissionType || 'before', // Default to 'before' for backward compatibility
+        sessionId: sessionId || new Date().toISOString(), // Generate sessionId if not provided
+        submittedAt: new Date()
+      });
       
       try {
+        // Validate before saving
+        const validationError = newSubmission.validateSync();
+        if (validationError) {
+          console.error('Validation error before save:', validationError);
+          throw validationError;
+        }
+        
         await newSubmission.save();
-        console.log(`Saved submission for category: ${submission.categoryName} in store: ${storeName}`);
+        console.log(`✅ Saved ${submissionType} submission for category: ${submission.categoryName} in store: ${storeName}`);
       } catch (saveError) {
-        console.error('Error saving submission:', saveError);
+        console.error('❌ Error saving submission:', saveError);
+        console.error('Submission data that failed:', newSubmission.toObject());
+        // Continue processing other submissions even if one fails
+        throw saveError; // Re-throw to be caught by outer try-catch
       }
     }
 
+    console.log(`Successfully processed ${submissionType} submission for ${submissionsData.length} categories`);
     res.json({ success: true });
   } catch (error) {
     console.error('Submission error:', error);
     res.status(500).json({ error: 'Submission failed' });
+  }
+});
+
+// Get user's submission history
+app.get('/api/user/history', async (req, res) => {
+  if (!req.session.user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const submissions = await Submission.find({ username: req.session.user.username })
+      .sort({ submittedAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    // Group submissions by sessionId to show before/after pairs
+    const groupedSubmissions = {};
+    submissions.forEach(submission => {
+      if (!groupedSubmissions[submission.sessionId]) {
+        groupedSubmissions[submission.sessionId] = {
+          sessionId: submission.sessionId,
+          storeId: submission.storeId,
+          storeName: submission.storeName,
+          submittedAt: submission.submittedAt,
+          before: [],
+          after: []
+        };
+      }
+      
+      if (submission.submissionType === 'before') {
+        groupedSubmissions[submission.sessionId].before.push(submission);
+      } else {
+        groupedSubmissions[submission.sessionId].after.push(submission);
+      }
+    });
+
+    const historyData = Object.values(groupedSubmissions);
+    const totalCount = await Submission.countDocuments({ username: req.session.user.username });
+
+    res.json({
+      history: historyData,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalCount / limit),
+        totalItems: totalCount,
+        itemsPerPage: limit
+      }
+    });
+  } catch (error) {
+    console.error('Get user history error:', error);
+    res.status(500).json({ error: 'Failed to retrieve user history' });
+  }
+});
+
+// Get categories that have "before" submissions for a store (for step 2)
+app.get('/api/before-categories/:storeId', async (req, res) => {
+  if (!req.session.user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  try {
+    const { storeId } = req.params;
+    const { sessionId } = req.query;
+
+    console.log(`Loading before categories for user: ${req.session.user.username}, storeId: ${storeId}, sessionId: ${sessionId}`);
+
+    const beforeSubmissions = await Submission.find({
+      username: req.session.user.username,
+      storeId: storeId,
+      submissionType: 'before',
+      sessionId: sessionId
+    });
+
+    console.log(`Found ${beforeSubmissions.length} before submissions`);
+
+    const categoriesWithBefore = beforeSubmissions.map(submission => ({
+      categoryId: submission.categoryId,
+      categoryName: submission.categoryName,
+      imageCount: submission.images.length,
+      note: submission.note
+    }));
+
+    console.log('Categories with before submissions:', categoriesWithBefore);
+
+    res.json(categoriesWithBefore);
+  } catch (error) {
+    console.error('Get before categories error:', error);
+    res.status(500).json({ error: 'Failed to retrieve before categories' });
   }
 });
 
@@ -860,6 +1071,15 @@ app.get('/api/admin/check-session', (req, res) => {
   res.json({ success: true, user: req.session.user });
 });
 
+// Check session endpoint
+app.get('/api/check-session', (req, res) => {
+  if (!req.session.user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+  
+  res.json({ success: true, user: req.session.user });
+});
+
 // Admin get submissions
 app.get('/api/admin/submissions', async (req, res) => {
   if (!req.session.user || req.session.user.role !== 'Admin') {
@@ -927,14 +1147,66 @@ app.get('/api/admin/submissions', async (req, res) => {
       );
     }
     
-    res.json(filteredSubmissions);
-  } catch (error) {
+    res.json(filteredSubmissions);  } catch (error) {
     console.error('Get submissions error:', error);
     res.status(500).json({ error: 'Failed to retrieve submissions' });
   }
 });
 
-// Admin delete submission
+// Bulk delete submissions (Admin only) - MUST come before the /:id route
+app.delete('/api/admin/submissions/bulk-delete', async (req, res) => {
+  if (!req.session.user || req.session.user.role !== 'Admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  
+  try {
+    const { ids } = req.body;
+    
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'Valid submission IDs array is required' });
+    }
+    
+    // Find all submissions to get their image URLs
+    const submissions = await Submission.find({ _id: { $in: ids } });
+    
+    if (submissions.length === 0) {
+      return res.status(404).json({ error: 'No submissions found' });
+    }
+    
+    // Delete images from S3
+    let deletedImagesCount = 0;
+    for (const submission of submissions) {
+      if (submission.images && submission.images.length > 0) {
+        for (const imageUrl of submission.images) {
+          try {
+            await deleteFromS3(imageUrl);
+            deletedImagesCount++;
+          } catch (s3Error) {
+            console.error('Error deleting image from S3:', s3Error);
+            // Continue with deletion even if some images fail to delete
+          }
+        }
+      }
+    }
+    
+    // Delete all submissions from MongoDB
+    const deleteResult = await Submission.deleteMany({ _id: { $in: ids } });
+    
+    console.log(`Bulk delete completed: ${deleteResult.deletedCount} submissions deleted, ${deletedImagesCount} images removed from S3`);
+    
+    res.json({ 
+      success: true, 
+      deletedCount: deleteResult.deletedCount,
+      deletedImagesCount: deletedImagesCount
+    });
+    
+  } catch (error) {
+    console.error('Bulk delete submissions error:', error);
+    res.status(500).json({ error: 'Failed to delete submissions' });
+  }
+});
+
+// Admin delete submission (single)
 app.delete('/api/admin/submissions/:id', async (req, res) => {
   if (!req.session.user || req.session.user.role !== 'Admin') {
     return res.status(403).json({ error: 'Admin access required' });
@@ -963,8 +1235,7 @@ app.delete('/api/admin/submissions/:id', async (req, res) => {
     // Delete the submission from MongoDB
     await Submission.findByIdAndDelete(submissionId);
     
-    res.json({ success: true });
-  } catch (error) {
+    res.json({ success: true });  } catch (error) {
     console.error('Delete submission error:', error);
     res.status(500).json({ error: 'Failed to delete submission' });
   }

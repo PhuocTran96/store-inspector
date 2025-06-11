@@ -8,6 +8,13 @@ class App {
         this.allStoreNames = []; // Lưu trữ store names cho autocomplete
         this.filteredStores = []; // Stores sau khi filter
         this.selectedDropdownIndex = -1; // Index của item đang được highlight trong dropdown
+        
+        // New properties for before/after workflow
+        this.currentStep = 'before'; // 'before' or 'after'
+        this.sessionId = null; // Unique session ID for linking before and after
+        this.beforeCategories = []; // Categories that have "before" submissions
+        this.selectedAfterCategories = []; // Categories selected for "after" photos
+        
         this.init();
     }
 
@@ -28,9 +35,11 @@ class App {
         document.getElementById('logoutBtn').addEventListener('click', this.handleLogout.bind(this));
         document.getElementById('backToStoresBtn').addEventListener('click', this.showStores.bind(this));
         document.getElementById('backToStoresFromAdminBtn').addEventListener('click', this.showStores.bind(this));
-        
-        // Submit
-        document.getElementById('submitBtn').addEventListener('click', this.handleSubmit.bind(this));
+        document.getElementById('historyBtn')?.addEventListener('click', this.showHistory.bind(this));
+          // Submit
+        document.getElementById('submitBtn').addEventListener('click', this.handleSubmitClick.bind(this));
+        document.getElementById('proceedToAfterBtn')?.addEventListener('click', this.proceedToAfterStep.bind(this));
+        document.getElementById('backToBeforeBtn')?.addEventListener('click', this.backToBeforeStep.bind(this));
         
         // Admin
         document.getElementById('exportBtn').addEventListener('click', this.handleExport.bind(this));
@@ -69,13 +78,33 @@ class App {
         setTimeout(() => {
             toast.classList.remove('show');
         }, 3000);
-    }
-
-    // Authentication
+    }    // Authentication
     async checkAuthStatus() {
-        // For demo purposes, we'll start with login screen
-        this.showScreen('loginScreen');
-    }    async handleLogin(e) {
+        try {
+            // Check if user is already authenticated
+            const response = await fetch('/api/check-session');
+            if (response.ok) {
+                const data = await response.json();
+                this.currentUser = data.user;
+                console.log('User already authenticated:', this.currentUser);
+                
+                // Show appropriate screen based on user role
+                if (this.currentUser.role === 'Admin') {
+                    this.showAdminOrStores();
+                } else {
+                    this.showScreen('storeScreen');
+                    this.loadStores();
+                }
+            } else {
+                // User not authenticated, show login screen
+                this.showScreen('loginScreen');
+            }
+        } catch (error) {
+            console.error('Error checking auth status:', error);
+            // On error, show login screen
+            this.showScreen('loginScreen');
+        }
+    }async handleLogin(e) {
         e.preventDefault();
         this.showLoading(true);
 
@@ -321,12 +350,162 @@ class App {
             this.hideDropdown();
         }
         this.loadStores();
+    }    async selectStore(store) {
+        this.currentStore = store;
+        this.sessionId = new Date().toISOString(); // Generate new session ID
+        this.currentStep = 'before'; // Start with "before" step
+        
+        document.getElementById('selectedStoreName').textContent = `${store['Store name']} - Bước 1: Chụp ảnh TRƯỚC cải thiện`;
+        await this.loadCategories();
+    }    // New workflow methods
+    showHistory() {
+        // Add a referrer parameter to help with navigation
+        const historyUrl = `/history.html?ref=stores`;
+        window.open(historyUrl, '_blank');
+    }    async proceedToAfterStep() {
+        if (this.currentStep !== 'before') return;
+        
+        try {
+            // Submit "before" photos first
+            const submitResult = await this.handleSubmit('before');
+            
+            if (!submitResult) {
+                throw new Error('Before submission failed');
+            }
+            
+            // Wait a moment for database insertion to complete
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Load categories that have "before" submissions
+            await this.loadBeforeCategories();
+            
+            // Check if we have any before categories
+            if (this.beforeCategories.length === 0) {
+                throw new Error('No before categories found. Please make sure your photos were submitted successfully.');
+            }
+            
+            // Switch to "after" step
+            this.currentStep = 'after';
+            document.getElementById('selectedStoreName').textContent = `${this.currentStore['Store name']} - Bước 2: Chọn danh mục cần chụp ảnh SAU cải thiện`;
+            
+            this.renderAfterCategorySelection();
+            
+        } catch (error) {
+            console.error('Error proceeding to after step:', error);
+            this.showToast(error.message || 'Không thể chuyển sang bước 2', 'error');
+        }
+    }    async loadBeforeCategories() {
+        try {
+            const storeId = this.currentStore['Store code (Fieldcheck)'] || this.currentStore.STT;
+            console.log(`Loading before categories for store: ${storeId}, sessionId: ${this.sessionId}`);
+            
+            const response = await fetch(`/api/before-categories/${storeId}?sessionId=${this.sessionId}`);
+            
+            if (response.ok) {
+                this.beforeCategories = await response.json();
+                console.log('Before categories loaded:', this.beforeCategories);
+                
+                if (this.beforeCategories.length === 0) {
+                    console.warn('No before categories found');
+                }
+            } else {
+                const errorData = await response.json();
+                console.error('Failed to load before categories:', response.status, errorData);
+                throw new Error(errorData.error || 'Failed to load before categories');
+            }
+        } catch (error) {
+            console.error('Error loading before categories:', error);
+            this.showToast('Không thể tải danh mục đã chụp', 'error');
+            throw error; // Re-throw to handle in calling function
+        }
+    }    renderAfterCategorySelection() {
+        const categoryList = document.getElementById('categoryList');
+        
+        if (!this.beforeCategories || this.beforeCategories.length === 0) {
+            categoryList.innerHTML = `
+                <div class="after-step-container">
+                    <div class="step-info">
+                        <h3><i class="fas fa-exclamation-triangle"></i> Không có danh mục nào</h3>
+                        <p>Không tìm thấy danh mục nào đã chụp ảnh "trước". Vui lòng quay lại bước 1 và chụp ảnh.</p>
+                    </div>
+                    
+                    <div class="step-actions">
+                        <button id="backToBeforeBtn" class="btn-secondary" onclick="app.backToBeforeStep()">
+                            <i class="fas fa-arrow-left"></i> Quay lại bước 1
+                        </button>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+        
+        categoryList.innerHTML = `
+            <div class="after-step-container">
+                <div class="step-info">
+                    <h3><i class="fas fa-info-circle"></i> Bước 2: Chọn danh mục cần cải thiện</h3>
+                    <p>Chọn các danh mục đã được cải thiện để chụp ảnh "sau":</p>
+                </div>
+                
+                <div class="category-selection">
+                    ${this.beforeCategories.map(category => `
+                        <div class="category-selector">
+                            <input type="checkbox" id="after-${category.categoryId}" 
+                                   onchange="app.toggleAfterCategory('${category.categoryId}')">
+                            <label for="after-${category.categoryId}">
+                                <span class="category-name">${category.categoryName}</span>
+                                <span class="before-info">(${category.imageCount} ảnh trước)</span>
+                            </label>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <div class="step-actions">
+                    <button id="backToBeforeBtn" class="btn-secondary" onclick="app.backToBeforeStep()">
+                        <i class="fas fa-arrow-left"></i> Quay lại bước 1
+                    </button>
+                    <button id="proceedToPhotoBtn" class="btn-primary" style="display: none;" onclick="app.startAfterPhotos()">
+                        <i class="fas fa-camera"></i> Bắt đầu chụp ảnh
+                    </button>
+                </div>
+            </div>
+        `;
     }
 
-    async selectStore(store) {
-        this.currentStore = store;
-        document.getElementById('selectedStoreName').textContent = store['Store name'];
-        await this.loadCategories();
+    toggleAfterCategory(categoryId) {
+        const checkbox = document.getElementById(`after-${categoryId}`);
+        const proceedBtn = document.getElementById('proceedToPhotoBtn');
+        
+        if (checkbox.checked) {
+            if (!this.selectedAfterCategories.includes(categoryId)) {
+                this.selectedAfterCategories.push(categoryId);
+            }
+        } else {
+            this.selectedAfterCategories = this.selectedAfterCategories.filter(id => id !== categoryId);
+        }
+        
+        // Show/hide proceed button based on selection
+        proceedBtn.style.display = this.selectedAfterCategories.length > 0 ? 'block' : 'none';
+    }    async startAfterPhotos() {
+        if (this.selectedAfterCategories.length === 0) {
+            this.showToast('Vui lòng chọn ít nhất 1 danh mục', 'error');
+            return;
+        }
+        
+        // Filter categories to only selected ones for "after" photos
+        this.categories = this.categories.filter(category => 
+            this.selectedAfterCategories.includes(category.ID)
+        );
+        
+        document.getElementById('selectedStoreName').textContent = `${this.currentStore['Store name']} - Bước 2: Chụp ảnh SAU cải thiện`;
+        
+        this.initializeCategoryData();
+        this.renderCategories();
+        this.updateSubmitButton();
+    }backToBeforeStep() {
+        this.currentStep = 'before';
+        this.selectedAfterCategories = [];
+        document.getElementById('selectedStoreName').textContent = `${this.currentStore['Store name']} - Bước 1: Chụp ảnh TRƯỚC cải thiện`;
+        this.loadCategories(); // Reload all categories
     }
 
     // Category management
@@ -348,14 +527,12 @@ class App {
         } finally {
             this.showLoading(false);
         }
-    }
-
-    initializeCategoryData() {
+    }    initializeCategoryData() {
         this.categoryData = {};
         this.categories.forEach(category => {
             this.categoryData[category.ID] = {
                 id: category.ID,
-                name: category.Category,
+                name: category.Category, // Use 'Category' field from CSV
                 images: [],
                 note: ''
             };
@@ -629,15 +806,19 @@ class App {
         const categoryElement = document.querySelector(`#categoryList .category-item:nth-child(${this.categories.indexOf(category) + 1})`);
         categoryElement.innerHTML = this.getCategoryHTML(category);
         this.updateSubmitButton();
-    }
-
-    updateSubmitButton() {
+    }    updateSubmitButton() {
         const hasAnyImages = Object.values(this.categoryData).some(data => data.images.length > 0);
-        document.getElementById('submitBtn').style.display = hasAnyImages ? 'block' : 'none';
-    }
-
-    // Submission
-    async handleSubmit() {
+        const submitBtn = document.getElementById('submitBtn');
+        
+        if (this.currentStep === 'before') {
+            submitBtn.innerHTML = '<i class="fas fa-arrow-right"></i> Tiếp tục bước 2';
+            submitBtn.style.display = hasAnyImages ? 'block' : 'none';
+        } else if (this.currentStep === 'after') {
+            submitBtn.innerHTML = '<i class="fas fa-check"></i> Hoàn thành kiểm tra';
+            submitBtn.style.display = hasAnyImages ? 'block' : 'none';
+        }
+    }// Submission
+    async handleSubmit(forcedSubmissionType = null) {
         const submissionData = Object.values(this.categoryData)
             .filter(data => data.images.length > 0)
             .map(data => ({
@@ -652,36 +833,72 @@ class App {
             return;
         }
 
-        this.showLoading(true);        try {
-            const formData = new FormData();
-            // Use store code or fall back to STT if store code is not available
-            const storeId = this.currentStore['Store code (Fieldcheck)'] || this.currentStore.STT;
-            formData.append('storeId', storeId);
-            formData.append('submissions', JSON.stringify(submissionData));
-
-            // Add all images
+        // Determine submission type
+        let submissionType = forcedSubmissionType || this.currentStep;
+        
+        // Generate session ID if it doesn't exist (for linking before/after)
+        if (!this.sessionId) {
+            this.sessionId = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+        }        this.showLoading(true, submissionType === 'before' ? 'Đang gửi ảnh TRƯỚC...' : 'Đang gửi ảnh SAU...');
+        
+        try {
+            // Collect all base64 images from categories
+            const base64Images = [];
             Object.values(this.categoryData).forEach(data => {
                 data.images.forEach(imageDataUrl => {
-                    const blob = this.dataURLtoBlob(imageDataUrl);
-                    formData.append('images', blob);
+                    base64Images.push(imageDataUrl);
                 });
             });
 
+            console.log(`📸 Preparing to send ${base64Images.length} images`);
+
+            // Use store code or fall back to STT if store code is not available
+            const storeId = this.currentStore['Store code (Fieldcheck)'] || this.currentStore.STT;
+            
+            // Prepare submission data
+            const submitData = {
+                storeId: storeId,
+                submissions: JSON.stringify(submissionData),
+                submissionType: submissionType,
+                sessionId: this.sessionId,
+                base64Images: base64Images // Send images as base64 array
+            };
+
+            console.log(`📤 Sending submission with ${base64Images.length} images`);
+
             const response = await fetch('/api/submit', {
                 method: 'POST',
-                body: formData
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(submitData)
             });
 
             if (response.ok) {
-                this.showToast('Gửi kết quả thành công!', 'success');
-                this.initializeCategoryData();
-                this.renderCategories();
+                if (submissionType === 'before') {
+                    this.showToast('Đã lưu ảnh TRƯỚC! Chuyển sang bước 2...', 'success');
+                    // Don't reset data here, wait for the after step workflow
+                    return true; // Return success for before step
+                } else {
+                    this.showToast('Hoàn thành kiểm tra! Đã gửi tất cả ảnh.', 'success');
+                    // Reset everything after completing the workflow
+                    this.currentStep = 'before';
+                    this.sessionId = null;
+                    this.beforeCategories = [];
+                    this.selectedAfterCategories = [];
+                    this.initializeCategoryData();
+                    this.renderCategories();
+                    this.showStores(); // Go back to store selection
+                    return true; // Return success for after step
+                }
             } else {
                 const error = await response.json();
                 this.showToast(error.error || 'Gửi thất bại', 'error');
+                return false; // Return failure
             }
         } catch (error) {
             this.showToast('Lỗi kết nối', 'error');
+            return false; // Return failure
         } finally {
             this.showLoading(false);
         }
@@ -939,6 +1156,17 @@ class App {
             this.showToast('Lỗi kết nối', 'error');
         } finally {
             this.showLoading(false);
+        }
+    }
+
+    // Handle submit button click with workflow logic
+    async handleSubmitClick() {
+        if (this.currentStep === 'before') {
+            // First, proceed to after step (which will submit before photos)
+            await this.proceedToAfterStep();
+        } else if (this.currentStep === 'after') {
+            // Submit after photos and complete the workflow
+            await this.handleSubmit('after');
         }
     }
 }

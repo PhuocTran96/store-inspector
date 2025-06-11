@@ -2,12 +2,16 @@ const AWS = require('aws-sdk');
 const multer = require('multer');
 const multerS3 = require('multer-s3');
 
-// Configure AWS
-AWS.config.update({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION
-});
+// Configure AWS with error handling
+try {
+  AWS.config.update({
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION
+  });
+} catch (error) {
+  console.warn('AWS configuration warning:', error.message);
+}
 
 const s3 = new AWS.S3();
 
@@ -16,7 +20,8 @@ const upload = multer({
   storage: multerS3({
     s3: s3,
     bucket: process.env.AWS_S3_BUCKET_NAME,
-    acl: 'public-read',
+    // Remove ACL as many buckets don't support it
+    // acl: 'public-read', 
     key: function (req, file, cb) {
       const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
       cb(null, 'store-inspections/' + uniqueSuffix + '-' + file.originalname);
@@ -67,7 +72,8 @@ const uploadBufferToS3 = async (buffer, filename, contentType = 'image/jpeg') =>
       Key: key,
       Body: buffer,
       ContentType: contentType,
-      ACL: 'public-read'
+      // Remove ACL as many buckets don't support it
+      // ACL: 'public-read'
     };
     
     const result = await s3.upload(params).promise();
