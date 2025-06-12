@@ -870,10 +870,15 @@ mark {
     font-family: 'Font Awesome 6 Free';
     font-weight: 900;
     position: absolute;
-    top: 22px;
-    right: 22px;
+    top: 20px;
+    right: 20px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     color: white;
-    font-size: 14px;
+    font-size: 12px;
     animation: checkmark 0.3s ease;
 }
 

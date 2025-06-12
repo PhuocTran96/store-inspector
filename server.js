@@ -119,7 +119,8 @@ async function loadData() {
       'Username': user.username,
       'User ID': user.userId,
       'Role': user.role,
-      'Password': user.password
+      'Password': user.password,
+      'TDS name': user.tdsName || '' // Add TDS name for session
     }));
     console.log(`✅ Users loaded from MongoDB: ${usersData.length} users`);
     if (usersData.length > 0) {
@@ -339,6 +340,179 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Submission API
+app.post('/api/submit', async (req, res) => {
+  try {
+    console.log('📥 Received submission request');
+    
+    const { storeId, submissions, submissionType, sessionId, base64Images } = req.body;
+    
+    if (!req.session.user) {
+      return res.status(401).json({ error: 'User not logged in' });
+    }
+    
+    // Parse submissions data
+    const submissionsData = JSON.parse(submissions);
+    console.log(`📋 Processing ${submissionsData.length} category submissions`);
+    
+    // Find store information
+    const store = storesData.find(s => 
+      s.storeCode === storeId ||
+      s['Store code (Fieldcheck)'] === storeId ||
+      s.STT === storeId
+    );
+    
+    if (!store) {
+      return res.status(400).json({ error: 'Store not found' });
+    }
+    
+    // Process base64 images and upload to S3
+    const imageUrls = [];
+    
+    if (base64Images && base64Images.length > 0) {
+      console.log(`📤 Uploading ${base64Images.length} images to S3...`);
+      const { uploadBufferToS3 } = require('./config/s3Config');
+      
+      for (let i = 0; i < base64Images.length; i++) {
+        try {
+          const base64Data = base64Images[i];
+          const matches = base64Data.match(/^data:image\/([a-zA-Z]*);base64,(.+)$/);
+          
+          if (!matches) {
+            console.warn(`⚠️ Invalid base64 image format at index ${i}`);
+            continue;
+          }
+          
+          const imageType = matches[1];
+          const imageBuffer = Buffer.from(matches[2], 'base64');
+          const filename = `${submissionType}-${sessionId}-${i + 1}.${imageType}`;
+          
+          const imageUrl = await uploadBufferToS3(imageBuffer, filename, `image/${imageType}`);
+          imageUrls.push(imageUrl);
+          console.log(`✅ Image ${i + 1} uploaded successfully`);
+          
+        } catch (uploadError) {
+          console.error(`❌ Error uploading image ${i + 1}:`, uploadError);
+          // Continue processing other images
+        }
+      }
+    }
+    
+    console.log(`📸 Successfully uploaded ${imageUrls.length}/${base64Images?.length || 0} images`);
+    
+    // Create submission documents for each category
+    for (const submissionData of submissionsData) {
+      try {        const newSubmission = new Submission({
+          username: req.session.user.username,
+          userId: req.session.user.id || req.session.user.userId, // Ensure userId is set
+          tdsName: (store.tdsName || store['TDS name'] || '').trim(), // Robust tdsName mapping
+          storeId: storeId,
+          storeName: store['Store name'] || store.storeName || store.name || 'Unknown Store',
+          storeAddress: store.Address || store.address || '',
+          categoryId: submissionData.categoryId,
+          categoryName: submissionData.categoryName,
+          note: submissionData.note || '',
+          images: imageUrls, // All images for this submission
+          submissionType: submissionType,
+          sessionId: sessionId,
+          submittedAt: new Date()
+        });
+        
+        await newSubmission.save();
+        console.log(`✅ Saved submission for category: ${submissionData.categoryName}`);
+        
+      } catch (saveError) {
+        console.error('❌ Error saving submission:', saveError);
+      }
+    }
+    
+    console.log(`🎉 Submission completed successfully`);
+    res.json({ 
+      success: true, 
+      message: 'Submission saved successfully',
+      imageCount: imageUrls.length
+    });
+    
+  } catch (error) {
+    console.error('❌ Submission error:', error);
+    res.status(500).json({ error: 'Failed to process submission' });  }
+});
+
+// Get before categories for step 2
+app.get('/api/before-categories/:storeId', async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const { sessionId } = req.query;
+    
+    if (!req.session.user) {
+      return res.status(401).json({ error: 'User not logged in' });
+    }
+    
+    console.log(`📋 Loading before categories for store: ${storeId}, sessionId: ${sessionId}`);    // Find submissions with submissionType 'before' for this store and session    // Build query dynamically to handle cases where userId might be undefined
+    const baseQuery = {
+      storeId: storeId,
+      sessionId: sessionId,
+      submissionType: 'before'
+    };
+    
+    const currentUserId = req.session.user.id || req.session.user.userId;
+    const currentUsername = req.session.user.username;
+    
+    console.log(`📋 Base query filters:`, baseQuery);
+    console.log(`📋 Current user - ID: ${currentUserId}, Username: ${currentUsername}`);
+    
+    // Try to find submissions with userId first
+    let beforeSubmissions = [];
+    
+    if (currentUserId) {
+      const userIdQuery = { ...baseQuery, userId: currentUserId };
+      console.log(`📋 Trying userId query:`, userIdQuery);
+      beforeSubmissions = await Submission.find(userIdQuery).select('categoryId categoryName').lean();
+      console.log(`📋 Found ${beforeSubmissions.length} submissions with userId`);
+    }
+    
+    // If no results with userId, try with username
+    if (beforeSubmissions.length === 0 && currentUsername) {
+      const usernameQuery = { ...baseQuery, username: currentUsername };
+      console.log(`📋 Trying username query:`, usernameQuery);
+      beforeSubmissions = await Submission.find(usernameQuery).select('categoryId categoryName').lean();
+      console.log(`📋 Found ${beforeSubmissions.length} submissions with username`);
+    }
+    
+    // If still no results, try without user filtering (for backward compatibility)
+    if (beforeSubmissions.length === 0) {
+      console.log(`📋 Trying base query without user filtering:`, baseQuery);
+      beforeSubmissions = await Submission.find(baseQuery).select('categoryId categoryName').lean();
+      console.log(`📋 Found ${beforeSubmissions.length} submissions without user filtering`);
+    }
+    
+    console.log(`📋 Found ${beforeSubmissions.length} before submissions`);
+    
+    // Extract unique categories with imageCount
+    const beforeCategories = beforeSubmissions.reduce((acc, submission) => {
+      let existing = acc.find(cat => cat.categoryId === submission.categoryId);
+      if (!existing) {
+        existing = {
+          categoryId: submission.categoryId,
+          categoryName: submission.categoryName,
+          imageCount: 1
+        };
+        acc.push(existing);
+      } else {
+        existing.imageCount = (existing.imageCount || 1) + 1;
+      }
+      return acc;
+    }, []);
+    
+    console.log(`📋 Before categories:`, beforeCategories);
+    res.json(beforeCategories);
+    
+  } catch (error) {
+    console.error('❌ Error loading before categories:', error);
+    res.status(500).json({ error: 'Failed to load before categories' });
+  }
+});
+
 // Login API
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
@@ -361,10 +535,11 @@ app.post('/api/login', async (req, res) => {
 
   // For demo purposes, we'll use simple password comparison
   // In production, use proper password hashing
-  if (user.Password === password) {
-    req.session.user = {
+  if (user.Password === password) {    req.session.user = {
       id: user['User ID'].trim(),
+      userId: user['User ID'].trim(), // Add for consistency
       username: user.Username ? user.Username.trim() : '',
+      tdsName: user['TDS name'] ? user['TDS name'].trim() : '',
       role: user.Role ? user.Role.trim() : ''
     };
     
@@ -600,21 +775,43 @@ app.delete('/api/admin/categories/:id', async (req, res) => {
 
 // Template Management Endpoints
 // Sample template downloads
-app.get('/api/template/stores-sample', (req, res) => {
-  const sampleData = [
-    { id: 'STORE001', name: 'Cửa hàng mẫu 1', address: '123 Đường ABC, Quận 1, TP.HCM', region: 'Miền Nam' },
-    { id: 'STORE002', name: 'Cửa hàng mẫu 2', address: '456 Đường XYZ, Quận 2, TP.HCM', region: 'Miền Nam' },
-    { id: 'STORE003', name: 'Cửa hàng mẫu 3', address: '789 Đường DEF, Quận 3, TP.HCM', region: 'Miền Nam' }
+app.get('/api/template/stores-sample', async (req, res) => {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('Stores Template');
+  worksheet.columns = [
+    { header: 'storeCode', key: 'storeCode' },
+    { header: 'storeName', key: 'storeName' },
+    { header: 'tdlName', key: 'tdlName' },
+    { header: 'tdsName', key: 'tdsName' },
+    { header: 'promoterName', key: 'promoterName' },
+    { header: 'typeShop', key: 'typeShop' },
+    { header: 'headcountInvest', key: 'headcountInvest' },
+    { header: 'headcountActive', key: 'headcountActive' },
+    { header: 'seniority', key: 'seniority' },
+    { header: 'dealerCode', key: 'dealerCode' },
+    { header: 'address', key: 'address' },
+    { header: 'storeType', key: 'storeType' },
+    { header: 'channel', key: 'channel' },
+    { header: 'keyCities', key: 'keyCities' },
+    { header: 'nearestKeyCity', key: 'nearestKeyCity' },
+    { header: 'rankingCommune', key: 'rankingCommune' },
+    { header: 'base', key: 'base' },
+    { header: 'shopTier', key: 'shopTier' },
+    { header: 'region', key: 'region' },
+    { header: 'province', key: 'province' },
+    { header: 'city', key: 'city' },
+    { header: 'district', key: 'district' }
   ];
-  
-  const csv = [
-    'id,name,address,region',
-    ...sampleData.map(store => `${store.id},"${store.name}","${store.address}",${store.region}`)
-  ].join('\n');
-  
-  res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', 'attachment; filename="stores-template.csv"');
-  res.send(csv);
+  worksheet.addRow({
+    storeCode: '52003112', storeName: 'Nguyen Kim Dist 1', tdlName: 'Thân Anh Hiếu', tdsName: 'Võ Minh Nhật', promoterName: 'Phạm Thị Hiền', typeShop: 'PRT', headcountInvest: 3, headcountActive: 3, seniority: 925, dealerCode: 'SG01', address: '63-65-67 TRẦN HƯNG ĐẠO P. CẦU ÔNG LÃNH, Q.1, HCM', storeType: 'A', channel: 'Nguyen Kim', keyCities: 1, nearestKeyCity: 'Ho Chi Minh', rankingCommune: 'Trung Tâm Tỉnh', base: 'In base', shopTier: 'Tier 1', region: 'South', province: 'Ho Chi Minh', city: 'Dist 1', district: 'Dist 1'
+  });
+  worksheet.addRow({
+    storeCode: '52000307', storeName: 'Cao Phong Dist 4', tdlName: 'Thân Anh Hiếu', tdsName: 'Võ Minh Nhật', promoterName: 'Nguyễn Thị Ánh Ngọc', typeShop: 'PRT', headcountInvest: 2, headcountActive: 2, seniority: 1158, dealerCode: 'H009', address: 'Chung Cu H2, 196 Hoang Dieu, Phuong 8, Quan 4, Ho Chi Minh', storeType: 'A', channel: 'Cao Phong', keyCities: 1, nearestKeyCity: 'Ho Chi Minh', rankingCommune: 'Gần Trung Tâm Tỉnh', base: 'In base', shopTier: 'Tier 1', region: 'South', province: 'Ho Chi Minh', city: 'Dist 4', district: 'Dist 4'
+  });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="stores-template.xlsx"');
+  await workbook.xlsx.write(res);
+  res.end();
 });
 
 app.get('/api/template/categories-sample', (req, res) => {
@@ -639,75 +836,45 @@ app.post('/api/template/upload-stores', fileUpload.single('storesFile'), async (
   if (!req.session.user || req.session.user.role !== 'Admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
-  
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
-  
   try {
     const filePath = req.file.path;
-    const csvContent = fs.readFileSync(filePath, 'utf8');
-    
-    // Parse CSV
-    const lines = csvContent.split('\n').filter(line => line.trim());
-    if (lines.length < 2) {
-      return res.status(400).json({ error: 'CSV file must have at least header and one data row' });
-    }
-    
-    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-    const requiredHeaders = ['id', 'name', 'address', 'region'];
-    
-    // Validate headers
-    for (const header of requiredHeaders) {
-      if (!headers.includes(header)) {
-        return res.status(400).json({ error: `Missing required column: ${header}` });
-      }
-    }
-    
-    const stores = [];
-    const errors = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-      
-      if (values.length !== headers.length) {
-        errors.push(`Line ${i + 1}: Column count mismatch`);
-        continue;
-      }
-      
-      const store = {};
-      headers.forEach((header, index) => {
-        store[header] = values[index];
+    const ext = filePath.split('.').pop().toLowerCase();
+    let stores = [];
+    if (ext === 'xlsx') {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(filePath);
+      const worksheet = workbook.worksheets[0];
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return; // skip header
+        const values = row.values;
+        stores.push({
+          storeCode: values[1], storeName: values[2], tdlName: values[3], tdsName: values[4], promoterName: values[5], typeShop: values[6], headcountInvest: values[7], headcountActive: values[8], seniority: values[9], dealerCode: values[10], address: values[11], storeType: values[12], channel: values[13], keyCities: values[14], nearestKeyCity: values[15], rankingCommune: values[16], base: values[17], shopTier: values[18], region: values[19], province: values[20], city: values[21], district: values[22]
+        });
       });
-      
-      // Validate required fields
-      if (!store.id || !store.name) {
-        errors.push(`Line ${i + 1}: Missing required fields (id, name)`);
-        continue;
-      }
-      
-      stores.push(store);
+    } else {
+      return res.status(400).json({ error: 'Please upload an Excel (.xlsx) file.' });
     }
-    
-    if (errors.length > 0) {
-      return res.status(400).json({ error: 'Validation errors', details: errors });
+    if (stores.length === 0) {
+      return res.status(400).json({ error: 'No valid store data found in file.' });
     }
-    
-    // Update stores data (this would typically update your stores collection/file)
-    storesData = stores;
-    
-    // Clean up uploaded file
+    let upserted = 0;
+    for (const store of stores) {
+      if (!store.storeCode || !store.storeName) continue;
+      await Store.findOneAndUpdate(
+        { storeCode: store.storeCode },
+        { $set: store },
+        { upsert: true, new: true }
+      );
+      upserted++;
+    }
+    await loadStoresFromMongoDB();
     fs.unlinkSync(filePath);
-    
-    res.json({ 
-      success: true, 
-      message: `Successfully processed ${stores.length} stores`,
-      count: stores.length 
-    });
-    
+    res.json({ success: true, message: `Successfully processed ${upserted} stores`, count: upserted });
   } catch (error) {
     console.error('Upload stores error:', error);
-    // Clean up file on error
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
@@ -720,93 +887,206 @@ app.post('/api/template/upload-categories', fileUpload.single('categoriesFile'),
   if (!req.session.user || req.session.user.role !== 'Admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
-  
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
-  
   try {
     const filePath = req.file.path;
-    const csvContent = fs.readFileSync(filePath, 'utf8');
-    
-    // Parse CSV
-    const lines = csvContent.split('\n').filter(line => line.trim());
-    if (lines.length < 2) {
-      return res.status(400).json({ error: 'CSV file must have at least header and one data row' });
-    }
-    
-    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-    const requiredHeaders = ['id', 'name', 'description', 'isActive', 'order'];
-    
-    // Validate headers
-    for (const header of requiredHeaders) {
-      if (!headers.includes(header)) {
-        return res.status(400).json({ error: `Missing required column: ${header}` });
-      }
-    }
-    
-    const categories = [];
-    const errors = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-      
-      if (values.length !== headers.length) {
-        errors.push(`Line ${i + 1}: Column count mismatch`);
-        continue;
-      }
-      
-      const category = {};
-      headers.forEach((header, index) => {
-        category[header] = values[index];
+    const ext = filePath.split('.').pop().toLowerCase();
+    let categories = [];
+    if (ext === 'xlsx') {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(filePath);
+      const worksheet = workbook.worksheets[0];
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return; // skip header
+        const values = row.values;
+        categories.push({
+          id: values[1], name: values[2], description: values[3], isActive: values[4], order: values[5]
+        });
       });
-      
-      // Validate and convert data types
-      if (!category.id || !category.name) {
-        errors.push(`Line ${i + 1}: Missing required fields (id, name)`);
-        continue;
-      }
-      
-      // Convert boolean and number fields
-      category.isActive = category.isActive === 'true';
-      category.order = parseInt(category.order) || 0;
-      
-      categories.push(category);
+    } else {
+      return res.status(400).json({ error: 'Please upload an Excel (.xlsx) file.' });
     }
-    
-    if (errors.length > 0) {
-      return res.status(400).json({ error: 'Validation errors', details: errors });
+    if (categories.length === 0) {
+      return res.status(400).json({ error: 'No valid category data found in file.' });
     }
-    
-    // Update categories in MongoDB
-    for (const categoryData of categories) {
+    let upserted = 0;
+    for (const cat of categories) {
+      if (!cat.id || !cat.name) continue;
       await Category.findOneAndUpdate(
-        { id: categoryData.id },
-        categoryData,
+        { id: cat.id },
+        { $set: cat },
         { upsert: true, new: true }
       );
+      upserted++;
     }
-    
-    // Reload categories data
     await loadCategoriesFromMongoDB();
-    
-    // Clean up uploaded file
     fs.unlinkSync(filePath);
-    
-    res.json({ 
-      success: true, 
-      message: `Successfully processed ${categories.length} categories`,
-      count: categories.length 
-    });
-    
+    res.json({ success: true, message: `Successfully processed ${upserted} categories`, count: upserted });
   } catch (error) {
     console.error('Upload categories error:', error);
-    // Clean up file on error
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
     res.status(500).json({ error: 'Failed to process categories file' });
   }
+});
+
+// Admin Submission Management API Endpoints
+// Get all submissions with filtering
+app.get('/api/admin/submissions', requireAdmin, async (req, res) => {
+  try {
+    const { username, tdsName, store, category, startDate, endDate } = req.query;
+    
+    // Build filter object
+    const filter = {};
+    
+    if (username && username.trim() !== '') {
+      filter.username = { $regex: username.trim(), $options: 'i' };
+    }
+    
+    if (tdsName && tdsName.trim() !== '') {
+      filter.tdsName = { $regex: tdsName.trim(), $options: 'i' };
+    }
+    
+    if (store && store.trim() !== '') {
+      filter.storeName = { $regex: store.trim(), $options: 'i' };
+    }
+    
+    if (category && category.trim() !== '') {
+      filter.categoryName = { $regex: category.trim(), $options: 'i' };
+    }
+    
+    if (startDate || endDate) {
+      filter.submittedAt = {};
+      if (startDate) {
+        filter.submittedAt.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        const endDateTime = new Date(endDate);
+        endDateTime.setHours(23, 59, 59, 999); // End of day
+        filter.submittedAt.$lte = endDateTime;
+      }
+    }
+    
+    console.log('Admin submissions filter:', filter);
+    
+    const submissions = await Submission.find(filter)
+      .sort({ submittedAt: -1 })
+      .lean();
+    
+    console.log(`Found ${submissions.length} submissions for admin`);
+    res.json(submissions);
+    
+  } catch (error) {
+    console.error('Error fetching submissions:', error);
+    res.status(500).json({ error: 'Failed to fetch submissions' });
+  }
+});
+
+// Bulk delete submissions
+app.delete('/api/admin/submissions/bulk-delete', requireAdmin, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'Valid submission IDs array is required' });
+    }
+    
+    // Find all submissions to get their image URLs
+    const submissions = await Submission.find({ _id: { $in: ids } });
+    
+    if (submissions.length === 0) {
+      return res.status(404).json({ error: 'No submissions found' });
+    }
+    
+    // Delete images from S3
+    const { deleteFromS3 } = require('./config/s3Config');
+    let deletedImagesCount = 0;
+    for (const submission of submissions) {
+      if (submission.images && submission.images.length > 0) {
+        for (const imageUrl of submission.images) {
+          try {
+            await deleteFromS3(imageUrl);
+            deletedImagesCount++;
+          } catch (s3Error) {
+            console.error('Error deleting image from S3:', s3Error);
+            // Continue with deletion even if some images fail to delete
+          }
+        }
+      }
+    }
+    
+    // Delete all submissions from MongoDB
+    const deleteResult = await Submission.deleteMany({ _id: { $in: ids } });
+    
+    console.log(`Bulk delete completed: ${deleteResult.deletedCount} submissions deleted, ${deletedImagesCount} images removed from S3`);
+    
+    res.json({ 
+      success: true, 
+      deletedCount: deleteResult.deletedCount,
+      deletedImagesCount: deletedImagesCount
+    });
+    
+  } catch (error) {
+    console.error('Bulk delete submissions error:', error);
+    res.status(500).json({ error: 'Failed to delete submissions' });
+  }
+});
+
+// Delete single submission
+app.delete('/api/admin/submissions/:id', requireAdmin, async (req, res) => {
+  try {
+    const submissionId = req.params.id;
+    
+    // Find the submission to get the image URLs
+    const submission = await Submission.findById(submissionId);
+    if (!submission) {
+      return res.status(404).json({ error: 'Submission not found' });
+    }
+    
+    // Delete images from S3 if needed
+    if (submission.images && submission.images.length > 0) {
+      const { deleteFromS3 } = require('./config/s3Config');
+      for (const imageUrl of submission.images) {
+        try {
+          await deleteFromS3(imageUrl);
+        } catch (s3Error) {
+          console.error('Error deleting image from S3:', s3Error);
+          // Continue with deletion even if some images fail to delete
+        }
+      }
+    }
+    
+    // Delete the submission from MongoDB
+    await Submission.findByIdAndDelete(submissionId);
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete submission error:', error);
+    res.status(500).json({ error: 'Failed to delete submission' });  }
+});
+
+// Check admin session
+app.get('/api/admin/check-session', (req, res) => {
+  if (req.session.user && req.session.user.role === 'Admin') {
+    res.json({ isAdmin: true, user: req.session.user });
+  } else {
+    res.status(403).json({ isAdmin: false });
+  }
+});
+
+// Logout endpoint
+app.post('/api/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Logout error:', err);
+      return res.status(500).json({ error: 'Failed to logout' });
+    }
+    res.clearCookie('connect.sid');
+    res.json({ success: true });
+  });
 });
 
 // User Management API Endpoints
@@ -996,6 +1276,209 @@ app.post('/api/admin/users/:id/toggle-status', requireAdmin, async (req, res) =>
   }
 });
 
+// Get user submission history (paginated)
+app.get('/api/user/history', async (req, res) => {
+  if (!req.session.user) {
+    return res.status(401).json({ error: 'User not logged in' });
+  }
+  try {
+    const userId = req.session.user.id || req.session.user.userId;
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const skip = (page - 1) * limit;
+
+    // Find all submissions for this user
+    const allSubs = await Submission.find({ userId }).sort({ submittedAt: -1 }).lean();
+
+    // Group by sessionId + storeId
+    const sessionMap = {};
+    for (const sub of allSubs) {
+      const key = `${sub.sessionId}|${sub.storeId}`;
+      if (!sessionMap[key]) {
+        sessionMap[key] = {
+          storeId: sub.storeId,
+          storeName: sub.storeName,
+          sessionId: sub.sessionId,
+          submittedAt: sub.submittedAt,
+          before: [],
+          after: []
+        };
+      }
+      if (sub.submissionType === 'before') sessionMap[key].before.push(sub);
+      if (sub.submissionType === 'after') sessionMap[key].after.push(sub);
+    }
+    // Convert to array and paginate
+    const sessions = Object.values(sessionMap).sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+    const paged = sessions.slice(skip, skip + limit);
+    res.json({ history: paged, total: sessions.length, page, limit });
+  } catch (error) {
+    console.error('❌ Error loading user history:', error);
+    res.status(500).json({ error: 'Failed to load user history' });
+  }
+});
+
+// Export submissions as Excel
+app.get('/api/admin/export', requireAdmin, async (req, res) => {
+  try {
+    // Build filter from query params (reuse your admin filter logic)
+    const filter = {};
+    if (req.query.username) filter.username = { $regex: req.query.username, $options: 'i' };
+    if (req.query.tdsName) filter.tdsName = { $regex: req.query.tdsName, $options: 'i' };
+    if (req.query.store) filter.storeName = { $regex: req.query.store, $options: 'i' };
+    if (req.query.category) filter.categoryName = { $regex: req.query.category, $options: 'i' };
+    if (req.query.startDate || req.query.endDate) {
+      filter.submittedAt = {};
+      if (req.query.startDate) filter.submittedAt.$gte = new Date(req.query.startDate);
+      if (req.query.endDate) filter.submittedAt.$lte = new Date(req.query.endDate);
+    }
+    const submissions = await Submission.find(filter).sort({ submittedAt: -1 }).lean();
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Submissions');
+    worksheet.columns = [
+      { header: 'Username', key: 'username' },
+      { header: 'TDS Name', key: 'tdsName' },
+      { header: 'Store Name', key: 'storeName' },
+      { header: 'Category', key: 'categoryName' },
+      { header: 'Type', key: 'submissionType' },
+      { header: 'Note', key: 'note' },
+      { header: 'Images', key: 'images' },
+      { header: 'Date', key: 'submittedAt' }
+    ];
+    submissions.forEach(sub => {
+      worksheet.addRow({
+        username: sub.username,
+        tdsName: sub.tdsName,
+        storeName: sub.storeName,
+        categoryName: sub.categoryName,
+        submissionType: sub.submissionType,
+        note: sub.note,
+        images: (sub.images || []).join(', '),
+        submittedAt: sub.submittedAt ? new Date(sub.submittedAt).toLocaleString('vi-VN') : ''
+      });
+    });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="submissions.xlsx"');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('Export Excel error:', error);
+    res.status(500).json({ error: 'Failed to export Excel' });
+  }
+});
+
+// Export submissions as PowerPoint (2x2 grid per step, matching target layout)
+app.get('/api/admin/export-pptx', requireAdmin, async (req, res) => {
+  try {
+    const filter = {};
+    if (req.query.username) filter.username = { $regex: req.query.username, $options: 'i' };
+    if (req.query.tdsName) filter.tdsName = { $regex: req.query.tdsName, $options: 'i' };
+    if (req.query.store) filter.storeName = { $regex: req.query.store, $options: 'i' };
+    if (req.query.category) filter.categoryName = { $regex: req.query.category, $options: 'i' };
+    if (req.query.startDate || req.query.endDate) {
+      filter.submittedAt = {};
+      if (req.query.startDate) filter.submittedAt.$gte = new Date(req.query.startDate);
+      if (req.query.endDate) filter.submittedAt.$lte = new Date(req.query.endDate);
+    }
+    const submissions = await Submission.find(filter).sort({ submittedAt: -1 }).lean();
+    // Group by sessionId + storeId + categoryId
+    const sessionMap = {};
+    for (const sub of submissions) {
+      const key = `${sub.sessionId}|${sub.storeId}|${sub.categoryId}`;
+      if (!sessionMap[key]) {
+        sessionMap[key] = { before: [], after: [], meta: sub };
+      }
+      if (sub.submissionType === 'before') sessionMap[key].before.push(sub);
+      if (sub.submissionType === 'after') sessionMap[key].after.push(sub);
+    }
+    const pptx = new PptxGenJS();
+    const placeholderPath = 'public/no-image-placeholder.svg';
+    pptx.defineSlideMaster({
+      title: 'CLEAN_LAYOUT',
+      background: { fill: 'FFFFFF' },
+      objects: [
+        { shape: 'rect', x: 0, y: 0, w: 10, h: 0.6, fill: { color: 'F2F2F2' } },
+        { shape: 'line', x: 5, y: 0.6, w: 0, h: 5.5, line: { color: 'C0C0C0', width: 2 } }
+      ]
+    });
+    Object.values(sessionMap).forEach(({ before, after, meta }) => {
+      const slide = pptx.addSlide({ masterName: 'CLEAN_LAYOUT' });
+      // Format date as DD-MM-YYYY
+      const formatDate = (date) => {
+        if (!date) return '';
+        const d = new Date(date);
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}-${month}-${year}`;
+      };
+      // First row: storeName | tdsName | Date
+      const title1 = `${meta.storeName || ''} | ${meta.tdsName || ''} | ${formatDate(meta.submittedAt)}`;
+      slide.addText(title1, {
+        x: 0.3, y: 0.16, w: 9, h: 0.5, fontSize: 16, bold: true, align: 'left', color: '333333'
+      });
+      // Second row: category | userName
+      const title2 = `${meta.categoryName || ''} | ${meta.username || ''}`;
+      slide.addText(title2, {
+        x: 0.3, y: 0.53, w: 9, h: 0.4, fontSize: 12, align: 'left', color: '666666'
+      });
+      // Section labels
+      slide.addText('Before', { x: 0.3, y: 0.95, w: 4, h: 0.4, fontSize: 13, bold: true, color: '0070C0' });
+      slide.addText('After', { x: 5.2, y: 0.95, w: 4, h: 0.4, fontSize: 13, bold: true, color: '00B050' });
+      slide.addShape(pptx.ShapeType.line, { x: 5.05, y: 1.1, w: 0, h: 4.4, line: { color: 'C0C0C0', width: 2 } });
+      // Notes (grey, not bold, separated)
+      let beforeNote = '';
+      if (before.length > 0 && before[0].note) beforeNote = before[0].note;
+      if (beforeNote) {
+        slide.addText(beforeNote, { x: 0.3, y: 1.2, w: 4.5, h: 0.4, fontSize: 9, color: '888888', bold: false });
+      }
+      let afterNote = '';
+      if (after.length > 0 && after[0].note) afterNote = after[0].note;
+      if (afterNote) {
+        slide.addText(afterNote, { x: 5.2, y: 1.2, w: 4.5, h: 0.4, fontSize: 9, color: '888888', bold: false });
+      }
+      const imgW = 2.23, imgH = 1.68, gapX = 0.2, gapY = 0.2;
+      const leftStartX = 0.2, leftStartY = 1.6;
+      const rightStartX = 5.2, rightStartY = 1.6;
+      // Always 4 images for before grid
+      let beforeImgs = before.flatMap(sub => sub.images || []);
+      while (beforeImgs.length < 4) beforeImgs.push(placeholderPath);
+      beforeImgs = beforeImgs.slice(0, 4);
+      beforeImgs.forEach((img, idx) => {
+        const row = Math.floor(idx / 2);
+        const col = idx % 2;
+        slide.addImage({
+          path: img,
+          x: leftStartX + col * (imgW + gapX),
+          y: leftStartY + row * (imgH + gapY),
+          w: imgW,
+          h: imgH
+        });
+      });
+      // Always 4 images for after grid
+      let afterImgs = after.flatMap(sub => sub.images || []);
+      while (afterImgs.length < 4) afterImgs.push(placeholderPath);
+      afterImgs = afterImgs.slice(0, 4);
+      afterImgs.forEach((img, idx) => {
+        const row = Math.floor(idx / 2);
+        const col = idx % 2;
+        slide.addImage({
+          path: img,
+          x: rightStartX + col * (imgW + gapX),
+          y: rightStartY + row * (imgH + gapY),
+          w: imgW,
+          h: imgH
+        });
+      });
+    });
+    const buf = await pptx.write('nodebuffer');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+    res.setHeader('Content-Disposition', 'attachment; filename="submissions.pptx"');
+    res.end(buf);
+  } catch (error) {
+    console.error('Export PPTX error:', error);
+    res.status(500).json({ error: 'Failed to export PowerPoint' });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);

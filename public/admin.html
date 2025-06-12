@@ -120,11 +120,11 @@
                             <div class="upload-section">
                                 <h3><i class="fas fa-upload"></i> Upload Template Cửa hàng</h3>
                                 <div class="file-upload-area">
-                                    <input type="file" id="storesFileInput" accept=".csv" style="display: none;">
+                                    <input type="file" id="storesFileInput" accept=".xlsx" style="display: none;">
                                     <div class="upload-dropzone" id="storesDropzone">
                                         <i class="fas fa-cloud-upload-alt"></i>
-                                        <p>Kéo thả file CSV hoặc click để chọn</p>
-                                        <small>Chỉ chấp nhận file .csv</small>
+                                        <p>Kéo thả file Excel hoặc click để chọn</p>
+                                        <small>Chỉ chấp nhận file .xlsx</small>
                                     </div>
                                     <button id="uploadStoresBtn" class="btn-primary" disabled>
                                         <i class="fas fa-upload"></i>
@@ -134,7 +134,7 @@
                             </div>
                             <div class="template-info">
                                 <h4>Format yêu cầu:</h4>
-                                <p>File CSV cần có các cột: <strong>id, name, address, region</strong></p>
+                                <p>File Excel cần có các cột: <strong>id, name, address, region</strong></p>
                                 <a href="/api/template/stores-sample" class="btn-secondary">
                                     <i class="fas fa-download"></i>
                                     Tải mẫu
@@ -147,11 +147,11 @@
                             <div class="upload-section">
                                 <h3><i class="fas fa-upload"></i> Upload Template Danh mục</h3>
                                 <div class="file-upload-area">
-                                    <input type="file" id="categoriesFileInput" accept=".csv" style="display: none;">
+                                    <input type="file" id="categoriesFileInput" accept=".xlsx" style="display: none;">
                                     <div class="upload-dropzone" id="categoriesDropzone">
                                         <i class="fas fa-cloud-upload-alt"></i>
-                                        <p>Kéo thả file CSV hoặc click để chọn</p>
-                                        <small>Chỉ chấp nhận file .csv</small>
+                                        <p>Kéo thả file Excel hoặc click để chọn</p>
+                                        <small>Chỉ chấp nhận file .xlsx</small>
                                     </div>
                                     <button id="uploadCategoriesBtn" class="btn-primary" disabled>
                                         <i class="fas fa-upload"></i>
@@ -161,7 +161,7 @@
                             </div>
                             <div class="template-info">
                                 <h4>Format yêu cầu:</h4>
-                                <p>File CSV cần có các cột: <strong>id, name, description, isActive, order</strong></p>
+                                <p>File Excel cần có các cột: <strong>id, name, description, isActive, order</strong></p>
                                 <a href="/api/template/categories-sample" class="btn-secondary">
                                     <i class="fas fa-download"></i>
                                     Tải mẫu
@@ -1205,10 +1205,10 @@
                     const files = e.dataTransfer.files;
                     if (files.length > 0) {
                         const file = files[0];
-                        if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+                        if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || file.name.endsWith('.xlsx')) {
                             handleFileSelect({ target: { files: [file] } }, type);
                         } else {
-                            showToast('Chỉ chấp nhận file CSV', 'error');
+                            showToast('Chỉ chấp nhận file Excel', 'error');
                         }
                     }
                 });
@@ -1218,8 +1218,8 @@
                 const file = event.target.files[0];
                 if (!file) return;
                 
-                if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
-                    showToast('Chỉ chấp nhận file CSV', 'error');
+                if (file.type !== 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' && !file.name.endsWith('.xlsx')) {
+                    showToast('Chỉ chấp nhận file Excel', 'error');
                     return;
                 }
                 
@@ -1236,7 +1236,7 @@
             
             function updateDropzoneDisplay(dropzone, file) {
                 dropzone.innerHTML = `
-                    <i class="fas fa-file-csv"></i>
+                    <i class="fas fa-file-excel"></i>
                     <p><strong>${file.name}</strong></p>
                     <small>Kích thước: ${formatFileSize(file.size)}</small>
                 `;
@@ -1328,8 +1328,8 @@
                 if (categoriesFileInput) categoriesFileInput.value = '';
                 
                 // Reset dropzones
-                resetDropzone(storesDropzone, 'Kéo thả file CSV hoặc click để chọn');
-                resetDropzone(categoriesDropzone, 'Kéo thả file CSV hoặc click để chọn');
+                resetDropzone(storesDropzone, 'Kéo thả file Excel hoặc click để chọn');
+                resetDropzone(categoriesDropzone, 'Kéo thả file Excel hoặc click để chọn');
                 
                 // Disable upload buttons
                 if (uploadStoresBtn) uploadStoresBtn.disabled = true;
@@ -1344,7 +1344,7 @@
                 dropzone.innerHTML = `
                     <i class="fas fa-cloud-upload-alt"></i>
                     <p>${text}</p>
-                    <small>Chỉ chấp nhận file .csv</small>                `;
+                    <small>Chỉ chấp nhận file .xlsx</small>                `;
                 dropzone.classList.remove('file-selected', 'dragover');
             }
 
