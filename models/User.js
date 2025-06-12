@@ -5,7 +5,10 @@ const userSchema = new mongoose.Schema({
   userId: { type: String, required: true, unique: true },
   role: { type: String, required: true },
   password: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now }
+  tdsName: { type: String, default: '' },
+  status: { type: String, enum: ['active', 'inactive'], default: 'active' },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
 });
 
 module.exports = mongoose.model('User', userSchema);

@@ -15,8 +15,38 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Configure multer for local file uploads (for admin templates)
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    // Keep original filename for CSV files
+    cb(null, file.originalname);
+  }
+});
+
+const fileUpload = multer({ 
+  storage: storage,
+  fileFilter: (req, file, cb) => {
+    // Accept CSV files only
+    if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only CSV files are allowed!'), false);
+    }
+  },
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  }
+});
+
 // MongoDB connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://admin:xNo9bso92Yvt0r7y@cluster0.bglf6fm.mongodb.net/project_display_app', {
+mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
 }).then(async () => {
@@ -59,6 +89,14 @@ const Store = require('./models/Store');
 const Category = require('./models/Category');
 const Submission = require('./models/Submission');
 
+// Admin middleware
+function requireAdmin(req, res, next) {
+  if (!req.session.user || req.session.user.role !== 'Admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
+}
+
 // Load data on startup
 let usersData = [];
 let storesData = [];
@@ -98,12 +136,11 @@ async function loadData() {
     console.log('🔄 Falling back to CSV...');
     // Fallback to CSV if MongoDB fails
     await loadUsersFromCSV();
-  }
-  // Load stores from MongoDB
+  }  // Load stores from MongoDB
   await loadStoresFromMongoDB();
   
-  // Load categories from CSV (will migrate this later)
-  await loadCategoriesFromCSV();
+  // Load categories from MongoDB (with CSV fallback)
+  await loadCategoriesFromMongoDB();
 }
 
 async function loadUsersFromCSV() {
@@ -211,6 +248,34 @@ async function loadStoresFromCSV() {
   });
 }
 
+async function loadCategoriesFromMongoDB() {
+  try {
+    console.log('🔄 Loading categories from MongoDB...');
+    const categories = await Category.find({ isActive: true }).sort({ order: 1, name: 1 });
+    
+    // Convert to the format expected by the frontend
+    categoriesData = categories.map(category => ({
+      'ID': category.id,
+      'Category': category.name,
+      'Description': category.description,
+      'Order': category.order
+    }));
+    
+    console.log(`✅ Categories loaded from MongoDB: ${categoriesData.length} categories`);
+    if (categoriesData.length > 0) {
+      console.log('📋 First category:', categoriesData[0]['Category']);
+    } else {
+      console.log('⚠️ No categories found in MongoDB, will try CSV fallback...');
+      await loadCategoriesFromCSV();
+    }
+  } catch (error) {
+    console.error('❌ Error loading categories from MongoDB:', error);
+    console.log('🔄 Falling back to CSV...');
+    // Fallback to CSV if MongoDB fails
+    await loadCategoriesFromCSV();
+  }
+}
+
 async function loadCategoriesFromCSV() {
   return new Promise((resolve) => {
     categoriesData = [];
@@ -229,6 +294,44 @@ async function loadCategoriesFromCSV() {
         resolve();
       });
   });
+}
+
+async function migrateCategoriesFromCSVToMongoDB() {
+  try {
+    console.log('🔄 Starting category migration from CSV to MongoDB...');
+    
+    // First load from CSV
+    await loadCategoriesFromCSV();
+    
+    if (categoriesData.length === 0) {
+      console.log('⚠️ No categories found in CSV file');
+      return;
+    }
+    
+    // Clear existing categories (optional - be careful in production)
+    await Category.deleteMany({});
+    console.log('🗑️ Cleared existing categories');
+    
+    // Migrate each category
+    const categoryPromises = categoriesData.map((category, index) => {
+      return Category.create({
+        id: category.ID || `cat_${index + 1}`,
+        name: category.Category || `Category ${index + 1}`,
+        description: category.Description || '',
+        order: index + 1,
+        isActive: true
+      });
+    });
+    
+    await Promise.all(categoryPromises);
+    console.log(`🎉 Successfully migrated ${categoriesData.length} categories to MongoDB`);
+    
+    // Reload from MongoDB to verify
+    await loadCategoriesFromMongoDB();
+    
+  } catch (error) {
+    console.error('❌ Error migrating categories:', error);
+  }
 }
 
 // Routes
@@ -384,891 +487,515 @@ app.get('/api/categories', (req, res) => {
   res.json(categoriesData);
 });
 
-// Get all store names for autocomplete
-app.get('/api/store-names', (req, res) => {
-  try {
-    const storeNames = storesData.map(store => ({
-      name: store['Store name'],
-      code: store['Store code (Fieldcheck)'],
-      address: store['Address (No.Street, Ward/District, City, Province/State/Region)']
-    })).filter(store => store.name && store.name.trim() !== '');
-    
-    res.json(storeNames);
-  } catch (error) {
-    console.error('Error getting store names:', error);
-    res.status(500).json({ error: 'Không thể lấy danh sách tên cửa hàng' });
-  }
-});
-
-// Submit inspection data
-app.post('/api/submit', (req, res, next) => {
-  // Add error handling for multer
-  const handleMulterUpload = (req, res, next) => {
-    upload.array('images', 64)(req, res, (err) => {
-      if (err) {
-        console.error('Multer upload error:', err);
-        // Continue without file upload if multer fails
-        console.log('Continuing without file upload due to multer error');
-        req.files = []; // Set empty files array
-        next();
-      } else {
-        next();
-      }
-    });
-  };
-
-  // Check if files are being uploaded
-  if (req.headers['content-type'] && req.headers['content-type'].includes('multipart/form-data')) {
-    // Use multer for file uploads with error handling
-    handleMulterUpload(req, res, next);
-  } else {
-    // Skip multer for JSON submissions (no files)
-    next();
-  }
-}, async (req, res) => {
-  if (!req.session.user) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-  try {
-    const { storeId, submissions, submissionType, sessionId } = req.body;
-    const submissionsData = JSON.parse(submissions);
-    
-    console.log(`Processing ${submissionType} submission for storeId: ${storeId}, sessionId: ${sessionId}, user: ${req.session.user.username}`);
-    console.log('Submissions data:', submissionsData);
-    
-    // Find the store name based on store code instead of STT
-    const store = storesData.find(s => s['Store code (Fieldcheck)'] === storeId);
-    const storeName = store ? store['Store name'] : 'Unknown Store';
-    
-    console.log(`Processing ${submissionType} submission for store: ${storeName} (Code: ${storeId})`);
-    
-    // Handle images - first try from multer-s3, then fall back to base64 processing
-    const imageUploads = [];
-    
-    if (req.files && req.files.length > 0) {
-      // Images were uploaded via multer-s3
-      for (const file of req.files) {
-        imageUploads.push(file.location); // S3 URL from multer-s3
-      }
-      console.log(`✅ Found ${imageUploads.length} uploaded files from multer-s3`);
-    } else {
-      // No files from multer, check for base64 images in the body
-      console.log('🔄 No multer files found, processing base64 images from request body...');
-      
-      // Extract base64 images from submission data if they exist
-      let totalImageCount = 0;
-      submissionsData.forEach(submission => {
-        totalImageCount += submission.imageCount || 0;
-      });
-      
-      if (totalImageCount > 0) {
-        console.log(`📸 Expected ${totalImageCount} images based on submission data`);
-        
-        // Process base64 images if they were sent separately
-        // Note: We'll need to modify the frontend to send base64 images in the request body
-        if (req.body.base64Images && Array.isArray(req.body.base64Images)) {
-          console.log(`🔄 Processing ${req.body.base64Images.length} base64 images...`);
-          
-          for (let i = 0; i < req.body.base64Images.length; i++) {
-            try {
-              const base64Image = req.body.base64Images[i];
-              
-              // Convert base64 to buffer
-              const matches = base64Image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-              if (matches && matches.length === 3) {
-                const contentType = matches[1];
-                const base64Data = matches[2];
-                const buffer = Buffer.from(base64Data, 'base64');
-                
-                // Upload to S3
-                const filename = `image-${Date.now()}-${i}.jpg`;
-                const s3Url = await uploadBufferToS3(buffer, filename, contentType);
-                imageUploads.push(s3Url);
-                
-                console.log(`✅ Uploaded base64 image ${i + 1} to S3: ${s3Url}`);
-              } else {
-                console.warn(`⚠️ Invalid base64 image format at index ${i}`);
-              }
-            } catch (uploadError) {
-              console.error(`❌ Error uploading base64 image ${i}:`, uploadError);
-              // Store base64 as fallback if S3 upload fails
-              imageUploads.push(req.body.base64Images[i]);
-            }
-          }
-        } else {
-          console.log('ℹ️ No base64Images found in request body, submissions will be saved without images');
-        }
-      }
-    }
-
-    console.log(`📤 Final image count: ${imageUploads.length} images ready for storage`);
-
-    // Process submissions and save to database
-    let imageIndex = 0;
-    for (const submission of submissionsData) {
-      const categoryImages = [];
-      for (let i = 0; i < submission.imageCount; i++) {
-        if (imageIndex < imageUploads.length) {
-          categoryImages.push(imageUploads[imageIndex]);
-          imageIndex++;
-        }
-      }
-
-      console.log('Creating submission with data:', {
-        username: req.session.user.username,
-        storeId: storeId,
-        storeName: storeName,
-        categoryId: submission.categoryId,
-        categoryName: submission.categoryName,
-        note: submission.note,
-        images: categoryImages,
-        submissionType: submissionType || 'before',
-        sessionId: sessionId || new Date().toISOString()
-      });      // Add validation for required fields
-      console.log(`Creating submission with:`, {
-        username: req.session.user.username,
-        storeId: storeId,
-        storeName: storeName,
-        categoryId: submission.categoryId,
-        categoryName: submission.categoryName,
-        submissionType: submissionType || 'before',
-        sessionId: sessionId || new Date().toISOString()
-      });
-
-      const newSubmission = new Submission({
-        username: req.session.user.username,
-        storeId: storeId,
-        storeName: storeName,
-        categoryId: submission.categoryId,
-        categoryName: submission.categoryName,
-        note: submission.note || '', // Provide default empty string
-        images: categoryImages,
-        submissionType: submissionType || 'before', // Default to 'before' for backward compatibility
-        sessionId: sessionId || new Date().toISOString(), // Generate sessionId if not provided
-        submittedAt: new Date()
-      });
-      
-      try {
-        // Validate before saving
-        const validationError = newSubmission.validateSync();
-        if (validationError) {
-          console.error('Validation error before save:', validationError);
-          throw validationError;
-        }
-        
-        await newSubmission.save();
-        console.log(`✅ Saved ${submissionType} submission for category: ${submission.categoryName} in store: ${storeName}`);
-      } catch (saveError) {
-        console.error('❌ Error saving submission:', saveError);
-        console.error('Submission data that failed:', newSubmission.toObject());
-        // Continue processing other submissions even if one fails
-        throw saveError; // Re-throw to be caught by outer try-catch
-      }
-    }
-
-    console.log(`Successfully processed ${submissionType} submission for ${submissionsData.length} categories`);
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Submission error:', error);
-    res.status(500).json({ error: 'Submission failed' });
-  }
-});
-
-// Get user's submission history
-app.get('/api/user/history', async (req, res) => {
-  if (!req.session.user) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const skip = (page - 1) * limit;
-
-    const submissions = await Submission.find({ username: req.session.user.username })
-      .sort({ submittedAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    // Group submissions by sessionId to show before/after pairs
-    const groupedSubmissions = {};
-    submissions.forEach(submission => {
-      if (!groupedSubmissions[submission.sessionId]) {
-        groupedSubmissions[submission.sessionId] = {
-          sessionId: submission.sessionId,
-          storeId: submission.storeId,
-          storeName: submission.storeName,
-          submittedAt: submission.submittedAt,
-          before: [],
-          after: []
-        };
-      }
-      
-      if (submission.submissionType === 'before') {
-        groupedSubmissions[submission.sessionId].before.push(submission);
-      } else {
-        groupedSubmissions[submission.sessionId].after.push(submission);
-      }
-    });
-
-    const historyData = Object.values(groupedSubmissions);
-    const totalCount = await Submission.countDocuments({ username: req.session.user.username });
-
-    res.json({
-      history: historyData,
-      pagination: {
-        currentPage: page,
-        totalPages: Math.ceil(totalCount / limit),
-        totalItems: totalCount,
-        itemsPerPage: limit
-      }
-    });
-  } catch (error) {
-    console.error('Get user history error:', error);
-    res.status(500).json({ error: 'Failed to retrieve user history' });
-  }
-});
-
-// Get categories that have "before" submissions for a store (for step 2)
-app.get('/api/before-categories/:storeId', async (req, res) => {
-  if (!req.session.user) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-
-  try {
-    const { storeId } = req.params;
-    const { sessionId } = req.query;
-
-    console.log(`Loading before categories for user: ${req.session.user.username}, storeId: ${storeId}, sessionId: ${sessionId}`);
-
-    const beforeSubmissions = await Submission.find({
-      username: req.session.user.username,
-      storeId: storeId,
-      submissionType: 'before',
-      sessionId: sessionId
-    });
-
-    console.log(`Found ${beforeSubmissions.length} before submissions`);
-
-    const categoriesWithBefore = beforeSubmissions.map(submission => ({
-      categoryId: submission.categoryId,
-      categoryName: submission.categoryName,
-      imageCount: submission.images.length,
-      note: submission.note
-    }));
-
-    console.log('Categories with before submissions:', categoriesWithBefore);
-
-    res.json(categoriesWithBefore);
-  } catch (error) {
-    console.error('Get before categories error:', error);
-    res.status(500).json({ error: 'Failed to retrieve before categories' });
-  }
-});
-
-// Admin export to Excel
-app.get('/api/admin/export', async (req, res) => {
-  if (!req.session.user || req.session.user.role !== 'Admin') {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
-
-  try {
-    // Apply filters if provided
-    const filters = {};
-    if (req.query.username) filters.username = new RegExp(req.query.username, 'i');
-    if (req.query.store) filters.storeName = new RegExp(req.query.store, 'i');
-    if (req.query.category) filters.categoryName = new RegExp(req.query.category, 'i');
-    
-    // Date range filtering
-    if (req.query.startDate || req.query.endDate) {
-      filters.submittedAt = {};
-      
-      if (req.query.startDate) {
-        // Set start of day for startDate
-        const startDate = new Date(req.query.startDate);
-        startDate.setHours(0, 0, 0, 0);
-        filters.submittedAt.$gte = startDate;
-      }
-      
-      if (req.query.endDate) {
-        // Set end of day for endDate
-        const endDate = new Date(req.query.endDate);
-        endDate.setHours(23, 59, 59, 999);
-        filters.submittedAt.$lte = endDate;
-      }
-    }
-      console.log('Export filters:', filters);
-    
-    let submissions = await Submission.find(filters).sort({ submittedAt: -1 });
-    
-    // Add TDS name to each submission and apply TDS name filter if provided
-    const submissionsWithTdsName = submissions.map(submission => {
-      let tdsName = '';
-      
-      // Try to find TDS name using storeId
-      if (submission.storeId) {
-        const store = storesData.find(s => s['Store code (Fieldcheck)'] === submission.storeId);
-        tdsName = store ? store['TDS name'] || '' : '';
-      }
-      
-      // If TDS name is still empty, try to find it by username
-      if (!tdsName && submission.username) {
-        const userStore = storesData.find(s => 
-          s['TDS name'] && s['TDS name'].trim() === submission.username.trim()
-        );
-        tdsName = userStore ? userStore['TDS name'] : '';
-      }
-      
-      return {
-        ...submission.toObject(),
-        tdsName: tdsName
-      };
-    });
-    
-    // Apply TDS name filter after adding TDS name to submissions
-    let filteredSubmissions = submissionsWithTdsName;
-    if (req.query.tdsName) {
-      const tdsNameRegex = new RegExp(req.query.tdsName, 'i');
-      filteredSubmissions = submissionsWithTdsName.filter(submission => 
-        tdsNameRegex.test(submission.tdsName || '')
-      );
-    }
-    
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Submissions');
-
-    // Headers
-    const headers = ['Username', 'TDS name', 'Store', 'Category', 'Note', 'Date'];
-    for (let i = 1; i <= 8; i++) {
-      headers.push(`Image ${i}`);
-    }
-    worksheet.addRow(headers);
-      // Data rows - use filtered submissions
-    for (const submission of filteredSubmissions) {
-      // Use storeName directly from the submission document
-      let displayStoreName = submission.storeName || '';
-      
-      if (!displayStoreName && submission.storeId) {
-        const store = storesData.find(s => s['Store code (Fieldcheck)'] === submission.storeId);
-        displayStoreName = store ? store['Store name'] : 'Unknown Store';
-      }
-      
-      // TDS name is already computed and available in submission.tdsName
-      const tdsName = submission.tdsName || '';
-      
-      // Format date as DD-MM-YYYY
-      const submissionDate = submission.submittedAt ? new Date(submission.submittedAt) : new Date();
-      const formattedDate = `${String(submissionDate.getDate()).padStart(2, '0')}-${String(submissionDate.getMonth() + 1).padStart(2, '0')}-${submissionDate.getFullYear()}`;
-      
-      const row = [
-        submission.username,
-        tdsName,
-        displayStoreName,
-        submission.categoryName,
-        submission.note,
-        formattedDate
-      ];
-      
-      // Add image URLs (up to 8)
-      for (let i = 0; i < 8; i++) {
-        row.push(submission.images[i] || '');
-      }
-      
-      worksheet.addRow(row);
-    }
-
-    // Set response headers
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename=submissions.xlsx');
-
-    // Send the Excel file
-    await workbook.xlsx.write(res);
-    res.end();  } catch (error) {
-    console.error('Export error:', error);
-    res.status(500).json({ error: 'Export failed' });
-  }
-});
-
-// Helper function to convert image URL to base64
-async function convertImageUrlToBase64(imageUrl) {
-  try {
-    const response = await axios.get(imageUrl, { 
-      responseType: 'arraybuffer',
-      timeout: 10000 // 10 second timeout
-    });
-    const base64 = Buffer.from(response.data, 'binary').toString('base64');
-    const contentType = response.headers['content-type'] || 'image/jpeg';
-    return `data:${contentType};base64,${base64}`;
-  } catch (error) {
-    console.error(`Error converting image URL to base64: ${imageUrl}`, error.message);
-    return null;
-  }
-}
-
-// Admin export to PowerPoint
-app.get('/api/admin/export-pptx', async (req, res) => {
-  if (!req.session.user || req.session.user.role !== 'Admin') {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
-
-  try {
-    // Apply filters if provided
-    const filters = {};
-    if (req.query.username) filters.username = new RegExp(req.query.username, 'i');
-    if (req.query.store) filters.storeName = new RegExp(req.query.store, 'i');
-    if (req.query.category) filters.categoryName = new RegExp(req.query.category, 'i');
-    
-    // Date range filtering
-    if (req.query.startDate || req.query.endDate) {
-      filters.submittedAt = {};
-      
-      if (req.query.startDate) {
-        const startDate = new Date(req.query.startDate);
-        startDate.setHours(0, 0, 0, 0);
-        filters.submittedAt.$gte = startDate;
-      }
-      
-      if (req.query.endDate) {
-        const endDate = new Date(req.query.endDate);
-        endDate.setHours(23, 59, 59, 999);
-        filters.submittedAt.$lte = endDate;
-      }
-    }
-    
-    console.log('PowerPoint Export filters:', filters);
-    
-    let submissions = await Submission.find(filters).sort({ submittedAt: -1 });
-    
-    // Add TDS name to each submission and apply TDS name filter if provided
-    const submissionsWithTdsName = submissions.map(submission => {
-      let tdsName = '';
-      
-      if (submission.storeId) {
-        const store = storesData.find(s => s['Store code (Fieldcheck)'] === submission.storeId);
-        tdsName = store ? store['TDS name'] || '' : '';
-      }
-      
-      if (!tdsName && submission.username) {
-        const userStore = storesData.find(s => 
-          s['TDS name'] && s['TDS name'].trim() === submission.username.trim()
-        );
-        tdsName = userStore ? userStore['TDS name'] : '';
-      }
-      
-      return {
-        ...submission.toObject(),
-        tdsName: tdsName
-      };
-    });
-    
-    // Apply TDS name filter
-    let filteredSubmissions = submissionsWithTdsName;
-    if (req.query.tdsName) {
-      const tdsNameRegex = new RegExp(req.query.tdsName, 'i');
-      filteredSubmissions = submissionsWithTdsName.filter(submission => 
-        tdsNameRegex.test(submission.tdsName || '')
-      );
-    }
-
-    // Create PowerPoint presentation
-    const pptx = new PptxGenJS();
-    
-    // Set presentation properties
-    pptx.author = 'Store Inspection App';
-    pptx.company = 'Your Company';
-    pptx.title = 'Store Inspection Results';
-    
-    // No image placeholder as base64 (simple gray rectangle with camera icon)
-    const noImageBase64 = 'data:image/svg+xml;base64,' + Buffer.from(`
-      <svg width="300" height="225" viewBox="0 0 300 225" xmlns="http://www.w3.org/2000/svg">
-        <rect width="300" height="225" fill="#f5f5f5" stroke="#cccccc" stroke-width="2"/>
-        <g transform="translate(120, 80)">
-          <rect x="15" y="20" width="50" height="35" rx="5" fill="#999999"/>
-          <rect x="10" y="15" width="60" height="45" rx="8" fill="none" stroke="#999999" stroke-width="2"/>
-          <circle cx="40" cy="37.5" r="10" fill="none" stroke="#999999" stroke-width="2"/>
-          <rect x="28" y="12" width="8" height="6" rx="2" fill="#999999"/>
-          <rect x="48" y="12" width="6" height="4" rx="1" fill="#999999"/>
-        </g>
-        <text x="150" y="140" text-anchor="middle" fill="#999999" font-family="Arial, sans-serif" font-size="14">No Image</text>
-        <text x="150" y="158" text-anchor="middle" fill="#999999" font-family="Arial, sans-serif" font-size="10">Available</text>
-      </svg>
-    `).toString('base64');
-
-    // Process each submission
-    for (const submission of filteredSubmissions) {
-      const displayStoreName = submission.storeName || 'Unknown Store';
-      const tdsName = submission.tdsName || 'N/A';
-      
-      // Format date as DD-MM-YYYY
-      const submissionDate = submission.submittedAt ? new Date(submission.submittedAt) : new Date();
-      const formattedDate = `${String(submissionDate.getDate()).padStart(2, '0')}-${String(submissionDate.getMonth() + 1).padStart(2, '0')}-${submissionDate.getFullYear()}`;
-      
-      const images = submission.images || [];
-      const totalImages = images.length;
-      
-      // Calculate number of slides needed (4 images per slide)
-      const slidesNeeded = Math.max(1, Math.ceil(totalImages / 4));
-      
-      for (let slideIndex = 0; slideIndex < slidesNeeded; slideIndex++) {
-        const slide = pptx.addSlide();
-        
-        // Add title area with store information
-        slide.addText([
-          { text: `${displayStoreName} | TDS: ${tdsName} | ${formattedDate}`, options: { fontSize: 16, bold: true, color: '333333' } }
-        ], {
-          x: 0.5, y: 0.3, w: 9, h: 0.5,
-          align: 'left',
-          valign: 'middle'
-        });
-        
-        slide.addText([
-          { text: `Category: ${submission.categoryName || 'N/A'} | Note: ${submission.note || 'No notes'}`, options: { fontSize: 12, color: '666666' } }
-        ], {
-          x: 0.5, y: 0.8, w: 9, h: 0.4,
-          align: 'left',
-          valign: 'middle'
-        });
-        
-        // Add images in 2x2 grid layout
-        const startImageIndex = slideIndex * 4;
-        const endImageIndex = Math.min(startImageIndex + 4, totalImages);
-        
-        // Define positions for 2x2 grid
-        const positions = [
-          { x: 0.5, y: 1.5, w: 4.25, h: 3.2 },  // Top left
-          { x: 5.25, y: 1.5, w: 4.25, h: 3.2 }, // Top right
-          { x: 0.5, y: 5.0, w: 4.25, h: 3.2 },  // Bottom left
-          { x: 5.25, y: 5.0, w: 4.25, h: 3.2 }  // Bottom right
-        ];        // Add images to slide
-        for (let i = 0; i < 4; i++) {
-          const imageIndex = startImageIndex + i;
-          const pos = positions[i];
-          
-          if (imageIndex < totalImages && images[imageIndex]) {
-            // Add actual image
-            try {
-              let imageData = images[imageIndex];
-                // Check if image is a URL (S3) or base64 data
-              if (imageData.startsWith('http')) {
-                // Convert URL to base64
-                imageData = await convertImageUrlToBase64(imageData);
-              } else if (!imageData.startsWith('data:')) {
-                // Assume it's a JPEG if no header is present
-                imageData = 'data:image/jpeg;base64,' + imageData;
-              }
-              
-              if (imageData) {
-                slide.addImage({
-                  data: imageData,
-                  x: pos.x, y: pos.y, w: pos.w, h: pos.h,
-                  sizing: { type: 'contain', w: pos.w, h: pos.h }
-                });
-                
-                // Add image number
-                slide.addText(`Image ${imageIndex + 1}`, {
-                  x: pos.x, y: pos.y + pos.h + 0.1, w: pos.w, h: 0.3,
-                  align: 'center',
-                  fontSize: 10,
-                  color: '666666'
-                });
-              } else {
-                // Fallback to no image placeholder if conversion failed
-                slide.addImage({
-                  data: noImageBase64,
-                  x: pos.x, y: pos.y, w: pos.w, h: pos.h
-                });
-              }
-            } catch (imageError) {
-              console.error('Error adding image:', imageError);
-              // Fallback to no image placeholder
-              slide.addImage({
-                data: noImageBase64,
-                x: pos.x, y: pos.y, w: pos.w, h: pos.h
-              });
-            }
-          } else {
-            // Add no image placeholder
-            slide.addImage({
-              data: noImageBase64,
-              x: pos.x, y: pos.y, w: pos.w, h: pos.h
-            });
-          }
-        }
-        
-        // Add slide number if multiple slides for this submission
-        if (slidesNeeded > 1) {
-          slide.addText(`Page ${slideIndex + 1} of ${slidesNeeded}`, {
-            x: 8.5, y: 0.1, w: 1.5, h: 0.3,
-            align: 'right',
-            fontSize: 8,
-            color: '999999'
-          });
-        }
-      }
-    }
-
-    // If no submissions found, add a message slide
-    if (filteredSubmissions.length === 0) {
-      const slide = pptx.addSlide();
-      slide.addText('No submissions found with the applied filters.', {
-        x: 1, y: 3, w: 8, h: 2,
-        align: 'center',
-        valign: 'middle',
-        fontSize: 24,
-        color: '666666'
-      });
-    }    // Generate and send the PowerPoint file
-    try {
-      const pptxBuffer = await pptx.write('nodebuffer');
-      
-      // Set response headers
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
-      res.setHeader('Content-Disposition', `attachment; filename=submissions_${new Date().toISOString().split('T')[0]}.pptx`);
-      
-      // Send the PowerPoint file
-      res.send(pptxBuffer);
-    } catch (writeError) {
-      console.error('PowerPoint write error:', writeError);
-      // Try alternative method
-      try {
-        const pptxData = await pptx.write('base64');
-        const pptxBuffer = Buffer.from(pptxData, 'base64');
-        
-        // Set response headers
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
-        res.setHeader('Content-Disposition', `attachment; filename=submissions_${new Date().toISOString().split('T')[0]}.pptx`);
-        
-        // Send the PowerPoint file
-        res.send(pptxBuffer);
-      } catch (fallbackError) {
-        console.error('PowerPoint fallback error:', fallbackError);
-        res.status(500).json({ error: 'PowerPoint export failed' });
-      }
-    }
-    
-  } catch (error) {
-    console.error('PowerPoint Export error:', error);
-    res.status(500).json({ error: 'PowerPoint export failed' });
-  }
-});
-
-// Logout
-app.post('/api/logout', (req, res) => {
-  req.session.destroy();
-  res.json({ success: true });
-});
-
-// Admin check session
-app.get('/api/admin/check-session', (req, res) => {
-  if (!req.session.user) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-  
-  if (req.session.user.role !== 'Admin') {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
-  
-  res.json({ success: true, user: req.session.user });
-});
-
-// Check session endpoint
-app.get('/api/check-session', (req, res) => {
-  if (!req.session.user) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-  
-  res.json({ success: true, user: req.session.user });
-});
-
-// Admin get submissions
-app.get('/api/admin/submissions', async (req, res) => {
+// Admin category management endpoints
+app.post('/api/admin/categories/migrate', async (req, res) => {
   if (!req.session.user || req.session.user.role !== 'Admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
   
   try {
-    // Apply filters if provided
-    const filters = {};
-    if (req.query.username) filters.username = new RegExp(req.query.username, 'i');
-    if (req.query.store) filters.storeName = new RegExp(req.query.store, 'i');
-    if (req.query.category) filters.categoryName = new RegExp(req.query.category, 'i');
-    
-    // Date range filtering
-    if (req.query.startDate || req.query.endDate) {
-      filters.submittedAt = {};
-      
-      if (req.query.startDate) {
-        // Set start of day for startDate
-        const startDate = new Date(req.query.startDate);
-        startDate.setHours(0, 0, 0, 0);
-        filters.submittedAt.$gte = startDate;
-      }
-      
-      if (req.query.endDate) {
-        // Set end of day for endDate
-        const endDate = new Date(req.query.endDate);
-        endDate.setHours(23, 59, 59, 999);
-        filters.submittedAt.$lte = endDate;
-      }
-    }    console.log('Submission filters:', filters);
-    
-    let submissions = await Submission.find(filters).sort({ submittedAt: -1 });
-    
-    // Add TDS name to each submission
-    const submissionsWithTdsName = submissions.map(submission => {
-      let tdsName = '';
-      
-      // Try to find TDS name using storeId
-      if (submission.storeId) {
-        const store = storesData.find(s => s['Store code (Fieldcheck)'] === submission.storeId);
-        tdsName = store ? store['TDS name'] || '' : '';
-      }
-      
-      // If TDS name is still empty, try to find it by username
-      if (!tdsName && submission.username) {
-        const userStore = storesData.find(s => 
-          s['TDS name'] && s['TDS name'].trim() === submission.username.trim()
-        );
-        tdsName = userStore ? userStore['TDS name'] : '';
-      }
-      
-      return {
-        ...submission.toObject(),
-        tdsName: tdsName
-      };
-    });
-    
-    // Apply TDS name filter after adding TDS name to submissions
-    let filteredSubmissions = submissionsWithTdsName;
-    if (req.query.tdsName) {
-      const tdsNameRegex = new RegExp(req.query.tdsName, 'i');
-      filteredSubmissions = submissionsWithTdsName.filter(submission => 
-        tdsNameRegex.test(submission.tdsName || '')
-      );
-    }
-    
-    res.json(filteredSubmissions);  } catch (error) {
-    console.error('Get submissions error:', error);
-    res.status(500).json({ error: 'Failed to retrieve submissions' });
+    await migrateCategoriesFromCSVToMongoDB();
+    res.json({ success: true, message: 'Categories migrated successfully' });
+  } catch (error) {
+    console.error('Migration error:', error);
+    res.status(500).json({ error: 'Migration failed' });
   }
 });
 
-// Bulk delete submissions (Admin only) - MUST come before the /:id route
-app.delete('/api/admin/submissions/bulk-delete', async (req, res) => {
+app.get('/api/admin/categories', async (req, res) => {
   if (!req.session.user || req.session.user.role !== 'Admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
   
   try {
-    const { ids } = req.body;
+    const categories = await Category.find({}).sort({ order: 1, name: 1 });
+    res.json(categories);
+  } catch (error) {
+    console.error('Get categories error:', error);
+    res.status(500).json({ error: 'Failed to retrieve categories' });
+  }
+});
+
+app.post('/api/admin/categories', async (req, res) => {
+  if (!req.session.user || req.session.user.role !== 'Admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  
+  try {
+    const { id, name, description, order } = req.body;
     
-    if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return res.status(400).json({ error: 'Valid submission IDs array is required' });
+    const newCategory = new Category({
+      id: id || `cat_${Date.now()}`,
+      name,
+      description: description || '',
+      order: order || 0,
+      isActive: true
+    });
+    
+    await newCategory.save();
+    
+    // Reload categories data
+    await loadCategoriesFromMongoDB();
+    
+    res.json({ success: true, category: newCategory });
+  } catch (error) {
+    console.error('Create category error:', error);
+    res.status(500).json({ error: 'Failed to create category' });
+  }
+});
+
+app.put('/api/admin/categories/:id', async (req, res) => {
+  if (!req.session.user || req.session.user.role !== 'Admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  
+  try {
+    const { id } = req.params;
+    const { name, description, order, isActive } = req.body;
+    
+    const category = await Category.findOne({ id });
+    if (!category) {
+      return res.status(404).json({ error: 'Category not found' });
     }
     
-    // Find all submissions to get their image URLs
-    const submissions = await Submission.find({ _id: { $in: ids } });
+    category.name = name || category.name;
+    category.description = description !== undefined ? description : category.description;
+    category.order = order !== undefined ? order : category.order;
+    category.isActive = isActive !== undefined ? isActive : category.isActive;
     
-    if (submissions.length === 0) {
-      return res.status(404).json({ error: 'No submissions found' });
+    await category.save();
+    
+    // Reload categories data
+    await loadCategoriesFromMongoDB();
+    
+    res.json({ success: true, category });
+  } catch (error) {
+    console.error('Update category error:', error);
+    res.status(500).json({ error: 'Failed to update category' });
+  }
+});
+
+app.delete('/api/admin/categories/:id', async (req, res) => {
+  if (!req.session.user || req.session.user.role !== 'Admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  
+  try {
+    const { id } = req.params;
+    
+    const category = await Category.findOneAndDelete({ id });
+    if (!category) {
+      return res.status(404).json({ error: 'Category not found' });
     }
     
-    // Delete images from S3
-    let deletedImagesCount = 0;
-    for (const submission of submissions) {
-      if (submission.images && submission.images.length > 0) {
-        for (const imageUrl of submission.images) {
-          try {
-            await deleteFromS3(imageUrl);
-            deletedImagesCount++;
-          } catch (s3Error) {
-            console.error('Error deleting image from S3:', s3Error);
-            // Continue with deletion even if some images fail to delete
-          }
-        }
+    // Reload categories data
+    await loadCategoriesFromMongoDB();
+    
+    res.json({ success: true, message: 'Category deleted successfully' });
+  } catch (error) {
+    console.error('Delete category error:', error);
+    res.status(500).json({ error: 'Failed to delete category' });
+  }
+});
+
+// Template Management Endpoints
+// Sample template downloads
+app.get('/api/template/stores-sample', (req, res) => {
+  const sampleData = [
+    { id: 'STORE001', name: 'Cửa hàng mẫu 1', address: '123 Đường ABC, Quận 1, TP.HCM', region: 'Miền Nam' },
+    { id: 'STORE002', name: 'Cửa hàng mẫu 2', address: '456 Đường XYZ, Quận 2, TP.HCM', region: 'Miền Nam' },
+    { id: 'STORE003', name: 'Cửa hàng mẫu 3', address: '789 Đường DEF, Quận 3, TP.HCM', region: 'Miền Nam' }
+  ];
+  
+  const csv = [
+    'id,name,address,region',
+    ...sampleData.map(store => `${store.id},"${store.name}","${store.address}",${store.region}`)
+  ].join('\n');
+  
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="stores-template.csv"');
+  res.send(csv);
+});
+
+app.get('/api/template/categories-sample', (req, res) => {
+  const sampleData = [
+    { id: 'CAT001', name: 'Danh mục mẫu 1', description: 'Mô tả danh mục 1', isActive: 'true', order: '1' },
+    { id: 'CAT002', name: 'Danh mục mẫu 2', description: 'Mô tả danh mục 2', isActive: 'true', order: '2' },
+    { id: 'CAT003', name: 'Danh mục mẫu 3', description: 'Mô tả danh mục 3', isActive: 'false', order: '3' }
+  ];
+  
+  const csv = [
+    'id,name,description,isActive,order',
+    ...sampleData.map(cat => `${cat.id},"${cat.name}","${cat.description}",${cat.isActive},${cat.order}`)
+  ].join('\n');
+  
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="categories-template.csv"');
+  res.send(csv);
+});
+
+// Upload and process stores template
+app.post('/api/template/upload-stores', fileUpload.single('storesFile'), async (req, res) => {
+  if (!req.session.user || req.session.user.role !== 'Admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  
+  try {
+    const filePath = req.file.path;
+    const csvContent = fs.readFileSync(filePath, 'utf8');
+    
+    // Parse CSV
+    const lines = csvContent.split('\n').filter(line => line.trim());
+    if (lines.length < 2) {
+      return res.status(400).json({ error: 'CSV file must have at least header and one data row' });
+    }
+    
+    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+    const requiredHeaders = ['id', 'name', 'address', 'region'];
+    
+    // Validate headers
+    for (const header of requiredHeaders) {
+      if (!headers.includes(header)) {
+        return res.status(400).json({ error: `Missing required column: ${header}` });
       }
     }
     
-    // Delete all submissions from MongoDB
-    const deleteResult = await Submission.deleteMany({ _id: { $in: ids } });
+    const stores = [];
+    const errors = [];
     
-    console.log(`Bulk delete completed: ${deleteResult.deletedCount} submissions deleted, ${deletedImagesCount} images removed from S3`);
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+      
+      if (values.length !== headers.length) {
+        errors.push(`Line ${i + 1}: Column count mismatch`);
+        continue;
+      }
+      
+      const store = {};
+      headers.forEach((header, index) => {
+        store[header] = values[index];
+      });
+      
+      // Validate required fields
+      if (!store.id || !store.name) {
+        errors.push(`Line ${i + 1}: Missing required fields (id, name)`);
+        continue;
+      }
+      
+      stores.push(store);
+    }
+    
+    if (errors.length > 0) {
+      return res.status(400).json({ error: 'Validation errors', details: errors });
+    }
+    
+    // Update stores data (this would typically update your stores collection/file)
+    storesData = stores;
+    
+    // Clean up uploaded file
+    fs.unlinkSync(filePath);
     
     res.json({ 
       success: true, 
-      deletedCount: deleteResult.deletedCount,
-      deletedImagesCount: deletedImagesCount
+      message: `Successfully processed ${stores.length} stores`,
+      count: stores.length 
     });
     
   } catch (error) {
-    console.error('Bulk delete submissions error:', error);
-    res.status(500).json({ error: 'Failed to delete submissions' });
+    console.error('Upload stores error:', error);
+    // Clean up file on error
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: 'Failed to process stores file' });
   }
 });
 
-// Admin delete submission (single)
-app.delete('/api/admin/submissions/:id', async (req, res) => {
+// Upload and process categories template
+app.post('/api/template/upload-categories', fileUpload.single('categoriesFile'), async (req, res) => {
   if (!req.session.user || req.session.user.role !== 'Admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
   
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  
   try {
-    const submissionId = req.params.id;
+    const filePath = req.file.path;
+    const csvContent = fs.readFileSync(filePath, 'utf8');
     
-    // Find the submission to get the image URLs
-    const submission = await Submission.findById(submissionId);
-    if (!submission) {
-      return res.status(404).json({ error: 'Submission not found' });    }
+    // Parse CSV
+    const lines = csvContent.split('\n').filter(line => line.trim());
+    if (lines.length < 2) {
+      return res.status(400).json({ error: 'CSV file must have at least header and one data row' });
+    }
     
-    // Delete images from S3 if needed
-    if (submission.images && submission.images.length > 0) {
-      for (const imageUrl of submission.images) {
-        try {
-          await deleteFromS3(imageUrl);
-        } catch (s3Error) {
-          console.error('Error deleting image from S3:', s3Error);
-          // Continue with deletion even if some images fail to delete
-        }
+    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+    const requiredHeaders = ['id', 'name', 'description', 'isActive', 'order'];
+    
+    // Validate headers
+    for (const header of requiredHeaders) {
+      if (!headers.includes(header)) {
+        return res.status(400).json({ error: `Missing required column: ${header}` });
       }
     }
     
-    // Delete the submission from MongoDB
-    await Submission.findByIdAndDelete(submissionId);
+    const categories = [];
+    const errors = [];
     
-    res.json({ success: true });  } catch (error) {
-    console.error('Delete submission error:', error);
-    res.status(500).json({ error: 'Failed to delete submission' });
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+      
+      if (values.length !== headers.length) {
+        errors.push(`Line ${i + 1}: Column count mismatch`);
+        continue;
+      }
+      
+      const category = {};
+      headers.forEach((header, index) => {
+        category[header] = values[index];
+      });
+      
+      // Validate and convert data types
+      if (!category.id || !category.name) {
+        errors.push(`Line ${i + 1}: Missing required fields (id, name)`);
+        continue;
+      }
+      
+      // Convert boolean and number fields
+      category.isActive = category.isActive === 'true';
+      category.order = parseInt(category.order) || 0;
+      
+      categories.push(category);
+    }
+    
+    if (errors.length > 0) {
+      return res.status(400).json({ error: 'Validation errors', details: errors });
+    }
+    
+    // Update categories in MongoDB
+    for (const categoryData of categories) {
+      await Category.findOneAndUpdate(
+        { id: categoryData.id },
+        categoryData,
+        { upsert: true, new: true }
+      );
+    }
+    
+    // Reload categories data
+    await loadCategoriesFromMongoDB();
+    
+    // Clean up uploaded file
+    fs.unlinkSync(filePath);
+    
+    res.json({ 
+      success: true, 
+      message: `Successfully processed ${categories.length} categories`,
+      count: categories.length 
+    });
+    
+  } catch (error) {
+    console.error('Upload categories error:', error);
+    // Clean up file on error
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: 'Failed to process categories file' });
   }
 });
 
-// Get user info by user ID for change password screen
-app.post('/api/get-user-info', async (req, res) => {
+// User Management API Endpoints
+// Get all users
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
   try {
-    const { userId } = req.body;
+    const users = await User.find({}, { password: 0 }) // Exclude password from response
+      .sort({ createdAt: -1 });
+    res.json(users);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Create new user
+app.post('/api/admin/users', requireAdmin, async (req, res) => {
+  try {
+    const { username, userId, tdsName, password, status = 'active' } = req.body;
     
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID is required' });
+    // Validate required fields
+    if (!username || !userId || !password) {
+      return res.status(400).json({ error: 'Username, userId, and password are required' });
     }
     
-    // Find user in MongoDB
-    const user = await User.findOne({ userId: userId.trim() });
+    // Check if username or userId already exists
+    const existingUser = await User.findOne({
+      $or: [{ username }, { userId }]
+    });
     
+    if (existingUser) {
+      return res.status(400).json({ 
+        error: existingUser.username === username ? 'Username already exists' : 'User ID already exists'
+      });
+    }
+    
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // Create new user
+    const newUser = new User({
+      username,
+      userId,
+      tdsName: tdsName || '',
+      password: hashedPassword,
+      status,
+      createdAt: new Date()
+    });
+    
+    await newUser.save();
+    
+    // Return user without password
+    const { password: _, ...userResponse } = newUser.toObject();
+    res.status(201).json(userResponse);
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+// Update user
+app.put('/api/admin/users/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { username, userId, tdsName, password, status } = req.body;
+    
+    const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
     
-    // Return user info (without password)
-    res.json({
-      id: user.userId,
-      username: user.username,
-      role: user.role
-    });
+    // Check if username or userId conflicts with other users
+    if (username || userId) {
+      const existingUser = await User.findOne({
+        _id: { $ne: id },
+        $or: [
+          ...(username ? [{ username }] : []),
+          ...(userId ? [{ userId }] : [])
+        ]
+      });
+      
+      if (existingUser) {
+        return res.status(400).json({ 
+          error: existingUser.username === username ? 'Username already exists' : 'User ID already exists'
+        });
+      }
+    }
     
+    // Update fields
+    if (username) user.username = username;
+    if (userId) user.userId = userId;
+    if (tdsName !== undefined) user.tdsName = tdsName;
+    if (status) user.status = status;
+    
+    // Update password if provided
+    if (password) {
+      user.password = await bcrypt.hash(password, 10);
+    }
+    
+    user.updatedAt = new Date();
+    await user.save();
+    
+    // Return user without password
+    const { password: _, ...userResponse } = user.toObject();
+    res.json(userResponse);
   } catch (error) {
-    console.error('Get user info error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error updating user:', error);
+    res.status(500).json({ error: 'Failed to update user' });
   }
 });
+
+// Delete user
+app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Don't allow deletion of admin user
+    if (user.username === 'admin') {
+      return res.status(403).json({ error: 'Cannot delete admin user' });
+    }
+    
+    await User.findByIdAndDelete(id);
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// Reset user password
+app.post('/api/admin/users/:id/reset-password', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { newPassword } = req.body;
+    
+    if (!newPassword) {
+      return res.status(400).json({ error: 'New password is required' });
+    }
+    
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Hash new password
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.updatedAt = new Date();
+    await user.save();
+    
+    res.json({ message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('Error resetting password:', error);
+    res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// Toggle user status
+app.post('/api/admin/users/:id/toggle-status', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Don't allow disabling admin user
+    if (user.username === 'admin') {
+      return res.status(403).json({ error: 'Cannot disable admin user' });
+    }
+    
+    user.status = user.status === 'active' ? 'inactive' : 'active';
+    user.updatedAt = new Date();
+    await user.save();
+    
+    // Return user without password
+    const { password: _, ...userResponse } = user.toObject();
+    res.json(userResponse);
+  } catch (error) {
+    console.error('Error toggling user status:', error);
+    res.status(500).json({ error: 'Failed to toggle user status' });
+  }
+});
+
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);

@@ -50,6 +50,13 @@
                 <button id="refreshBtn" class="btn-secondary">
                     <i class="fas fa-sync-alt"></i>
                     Làm mới
+                </button>                <button id="templateManagementBtn" class="btn-success">
+                    <i class="fas fa-cogs"></i>
+                    Quản lý Template
+                </button>
+                <button id="userManagementBtn" class="btn-success">
+                    <i class="fas fa-users"></i>
+                    Quản lý User
                 </button>
             </div><div class="filter-row">
                 <input type="text" id="filterUsername" placeholder="Lọc theo username" class="filter-input">
@@ -93,6 +100,179 @@
                         <i class="fas fa-trash"></i>
                         Xóa đã chọn
                     </button>
+                </div>            </div>
+
+            <!-- Template Management Modal -->
+            <div id="templateModal" class="modal" style="display: none;">
+                <div class="modal-content template-modal">
+                    <div class="modal-header">
+                        <h2><i class="fas fa-cogs"></i> Quản lý Template</h2>
+                        <span class="close" id="closeTemplateModal">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="template-tabs">
+                            <button class="tab-button active" data-tab="stores">Cửa hàng</button>
+                            <button class="tab-button" data-tab="categories">Danh mục</button>
+                        </div>
+                        
+                        <!-- Stores Tab -->
+                        <div id="storesTab" class="tab-content active">
+                            <div class="upload-section">
+                                <h3><i class="fas fa-upload"></i> Upload Template Cửa hàng</h3>
+                                <div class="file-upload-area">
+                                    <input type="file" id="storesFileInput" accept=".csv" style="display: none;">
+                                    <div class="upload-dropzone" id="storesDropzone">
+                                        <i class="fas fa-cloud-upload-alt"></i>
+                                        <p>Kéo thả file CSV hoặc click để chọn</p>
+                                        <small>Chỉ chấp nhận file .csv</small>
+                                    </div>
+                                    <button id="uploadStoresBtn" class="btn-primary" disabled>
+                                        <i class="fas fa-upload"></i>
+                                        Upload Stores
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="template-info">
+                                <h4>Format yêu cầu:</h4>
+                                <p>File CSV cần có các cột: <strong>id, name, address, region</strong></p>
+                                <a href="/api/template/stores-sample" class="btn-secondary">
+                                    <i class="fas fa-download"></i>
+                                    Tải mẫu
+                                </a>
+                            </div>
+                        </div>
+                        
+                        <!-- Categories Tab -->
+                        <div id="categoriesTab" class="tab-content">
+                            <div class="upload-section">
+                                <h3><i class="fas fa-upload"></i> Upload Template Danh mục</h3>
+                                <div class="file-upload-area">
+                                    <input type="file" id="categoriesFileInput" accept=".csv" style="display: none;">
+                                    <div class="upload-dropzone" id="categoriesDropzone">
+                                        <i class="fas fa-cloud-upload-alt"></i>
+                                        <p>Kéo thả file CSV hoặc click để chọn</p>
+                                        <small>Chỉ chấp nhận file .csv</small>
+                                    </div>
+                                    <button id="uploadCategoriesBtn" class="btn-primary" disabled>
+                                        <i class="fas fa-upload"></i>
+                                        Upload Categories
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="template-info">
+                                <h4>Format yêu cầu:</h4>
+                                <p>File CSV cần có các cột: <strong>id, name, description, isActive, order</strong></p>
+                                <a href="/api/template/categories-sample" class="btn-secondary">
+                                    <i class="fas fa-download"></i>
+                                    Tải mẫu
+                                </a>
+                            </div>
+                        </div>
+                        
+                        <div class="upload-progress" id="uploadProgress" style="display: none;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progressFill"></div>
+                            </div>
+                            <p id="progressText">Đang xử lý...</p>
+                        </div>                    </div>
+                </div>
+            </div>
+
+            <!-- User Management Modal -->
+            <div id="userModal" class="modal" style="display: none;">
+                <div class="modal-content user-modal">
+                    <div class="modal-header">
+                        <h2><i class="fas fa-users"></i> Quản lý User</h2>
+                        <span class="close" id="closeUserModal">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="user-actions">
+                            <button id="addUserBtn" class="btn-primary">
+                                <i class="fas fa-user-plus"></i>
+                                Thêm User Mới
+                            </button>
+                            <button id="refreshUsersBtn" class="btn-secondary">
+                                <i class="fas fa-sync-alt"></i>
+                                Làm mới
+                            </button>
+                        </div>
+                        
+                        <div class="users-table-container">
+                            <table class="users-table">
+                                <thead>
+                                    <tr>
+                                        <th>Username</th>
+                                        <th>User ID</th>
+                                        <th>TDS Name</th>
+                                        <th>Trạng thái</th>
+                                        <th>Ngày tạo</th>
+                                        <th>Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="usersTableBody">
+                                    <!-- Users will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User Form Modal -->
+            <div id="userFormModal" class="modal" style="display: none;">
+                <div class="modal-content user-form-modal">
+                    <div class="modal-header">
+                        <h2 id="userFormTitle"><i class="fas fa-user-edit"></i> Thêm User Mới</h2>
+                        <span class="close" id="closeUserFormModal">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <form id="userForm">
+                            <input type="hidden" id="editUserId" name="editUserId">
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="userUsername">Username <span class="required">*</span></label>
+                                    <input type="text" id="userUsername" name="username" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="userUserId">User ID <span class="required">*</span></label>
+                                    <input type="text" id="userUserId" name="userId" required>
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="userTdsName">TDS Name</label>
+                                    <input type="text" id="userTdsName" name="tdsName">
+                                </div>
+                                <div class="form-group">
+                                    <label for="userPassword">Password <span class="required">*</span></label>
+                                    <input type="password" id="userPassword" name="password" required>
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="userStatus">Trạng thái</label>
+                                    <select id="userStatus" name="status">
+                                        <option value="active">Hoạt động</option>
+                                        <option value="inactive">Không hoạt động</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="form-actions">
+                                <button type="button" id="cancelUserForm" class="btn-secondary">
+                                    <i class="fas fa-times"></i>
+                                    Hủy
+                                </button>
+                                <button type="submit" class="btn-primary">
+                                    <i class="fas fa-save"></i>
+                                    Lưu
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
 
@@ -171,8 +351,9 @@
             const dashboardSection = document.getElementById('dashboardSection');
             const adminLoginForm = document.getElementById('adminLoginForm');
             const logoutBtn = document.getElementById('logoutBtn');            const exportBtn = document.getElementById('exportBtn');
-            const exportPptxBtn = document.getElementById('exportPptxBtn');
-            const refreshBtn = document.getElementById('refreshBtn');
+            const exportPptxBtn = document.getElementById('exportPptxBtn');            const refreshBtn = document.getElementById('refreshBtn');
+            const templateManagementBtn = document.getElementById('templateManagementBtn');
+            const userManagementBtn = document.getElementById('userManagementBtn');
             const submissionsTableBody = document.getElementById('submissionsTableBody');
             const paginationContainer = document.getElementById('paginationContainer');
             const imagePreviewModal = document.getElementById('imagePreviewModal');
@@ -181,6 +362,32 @@
             const modalInfo = document.getElementById('modalInfo');
             const modalNote = document.getElementById('modalNote');
             const modalImageGrid = document.getElementById('modalImageGrid');
+            
+            // Template management elements
+            const templateModal = document.getElementById('templateModal');
+            const closeTemplateModal = document.getElementById('closeTemplateModal');
+            const tabButtons = document.querySelectorAll('.tab-button');
+            const tabContents = document.querySelectorAll('.tab-content');
+            const storesFileInput = document.getElementById('storesFileInput');
+            const categoriesFileInput = document.getElementById('categoriesFileInput');
+            const storesDropzone = document.getElementById('storesDropzone');
+            const categoriesDropzone = document.getElementById('categoriesDropzone');
+            const uploadStoresBtn = document.getElementById('uploadStoresBtn');
+            const uploadCategoriesBtn = document.getElementById('uploadCategoriesBtn');            const uploadProgress = document.getElementById('uploadProgress');
+            const progressFill = document.getElementById('progressFill');
+            const progressText = document.getElementById('progressText');
+            
+            // User management elements
+            const userModal = document.getElementById('userModal');
+            const closeUserModal = document.getElementById('closeUserModal');
+            const userFormModal = document.getElementById('userFormModal');
+            const closeUserFormModal = document.getElementById('closeUserFormModal');
+            const addUserBtn = document.getElementById('addUserBtn');
+            const refreshUsersBtn = document.getElementById('refreshUsersBtn');
+            const usersTableBody = document.getElementById('usersTableBody');
+            const userForm = document.getElementById('userForm');
+            const userFormTitle = document.getElementById('userFormTitle');
+            const cancelUserForm = document.getElementById('cancelUserForm');
             
             // Lightbox elements
             const imageLightbox = document.getElementById('imageLightbox');
@@ -203,13 +410,14 @@
             const selectAllBtn = document.getElementById('selectAllBtn');
             const deselectAllBtn = document.getElementById('deselectAllBtn');
             const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
-            const selectedCount = document.getElementById('selectedCount');
-
-            // Variables
+            const selectedCount = document.getElementById('selectedCount');            // Variables
             let submissions = [];
             let selectedSubmissions = new Set(); // Track selected submission IDs
-            let currentPage = 1;
-            let itemsPerPage = 10;            let filters = {
+            let currentPage = 1;            let itemsPerPage = 10;
+            let selectedStoresFile = null;
+            let selectedCategoriesFile = null;
+            let users = [];
+            let editingUserId = null;let filters = {
                 username: '',
                 tdsName: '',
                 store: '',
@@ -226,9 +434,9 @@
             checkAdminSession();
               // Event Listeners
             adminLoginForm.addEventListener('submit', handleAdminLogin);            logoutBtn.addEventListener('click', handleLogout);
-            exportBtn.addEventListener('click', handleExport);
-            exportPptxBtn.addEventListener('click', handleExportPptx);
-            refreshBtn.addEventListener('click', loadSubmissions);
+            exportBtn.addEventListener('click', handleExport);            exportPptxBtn.addEventListener('click', handleExportPptx);            refreshBtn.addEventListener('click', loadSubmissions);
+            templateManagementBtn.addEventListener('click', openTemplateModal);
+            userManagementBtn.addEventListener('click', openUserModal);
             closeModal.addEventListener('click', () => imagePreviewModal.style.display = 'none');
             
             // Lightbox event listeners
@@ -266,9 +474,89 @@
             }
             if (deselectAllBtn) {
                 deselectAllBtn.addEventListener('click', deselectAllSubmissions);
-            }
-            if (deleteSelectedBtn) {
+            }            if (deleteSelectedBtn) {
                 deleteSelectedBtn.addEventListener('click', deleteSelectedSubmissions);
+            }
+            
+            // Template management event listeners
+            if (closeTemplateModal) {
+                closeTemplateModal.addEventListener('click', closeTemplateModalHandler);
+            }
+            
+            // Tab switching
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const tabName = button.getAttribute('data-tab');
+                    switchTab(tabName);
+                });
+            });
+            
+            // File input handlers
+            if (storesFileInput) {
+                storesFileInput.addEventListener('change', (e) => handleFileSelect(e, 'stores'));
+            }
+            if (categoriesFileInput) {
+                categoriesFileInput.addEventListener('change', (e) => handleFileSelect(e, 'categories'));
+            }
+            
+            // Dropzone handlers
+            if (storesDropzone) {
+                setupDropzone(storesDropzone, storesFileInput, 'stores');
+            }
+            if (categoriesDropzone) {
+                setupDropzone(categoriesDropzone, categoriesFileInput, 'categories');
+            }
+            
+            // Upload button handlers
+            if (uploadStoresBtn) {
+                uploadStoresBtn.addEventListener('click', () => uploadTemplate('stores'));
+            }
+            if (uploadCategoriesBtn) {
+                uploadCategoriesBtn.addEventListener('click', () => uploadTemplate('categories'));
+            }
+              // Close modal on background click
+            if (templateModal) {
+                templateModal.addEventListener('click', (e) => {
+                    if (e.target === templateModal) {
+                        closeTemplateModalHandler();
+                    }
+                });
+            }
+            
+            // User management event listeners
+            if (closeUserModal) {
+                closeUserModal.addEventListener('click', closeUserModalHandler);
+            }
+            if (closeUserFormModal) {
+                closeUserFormModal.addEventListener('click', closeUserFormModalHandler);
+            }
+            if (addUserBtn) {
+                addUserBtn.addEventListener('click', () => openUserForm());
+            }
+            if (refreshUsersBtn) {
+                refreshUsersBtn.addEventListener('click', loadUsers);
+            }
+            if (userForm) {
+                userForm.addEventListener('submit', handleUserFormSubmit);
+            }
+            if (cancelUserForm) {
+                cancelUserForm.addEventListener('click', closeUserFormModalHandler);
+            }
+            
+            // Close user modals on background click
+            if (userModal) {
+                userModal.addEventListener('click', (e) => {
+                    if (e.target === userModal) {
+                        closeUserModalHandler();
+                    }
+                });
+            }
+            if (userFormModal) {
+                userFormModal.addEventListener('click', (e) => {
+                    if (e.target === userFormModal) {
+                        closeUserFormModalHandler();
+                    }
+                });
             }
             
             // Functions
@@ -860,13 +1148,472 @@
                 // Update counter
                 currentImageIndex.textContent = currentLightboxIndex + 1;
                 totalImages.textContent = currentLightboxImages.length;
-                
-                // Show/hide navigation based on number of images
+                  // Show/hide navigation based on number of images
                 if (currentLightboxImages.length <= 1) {
                     imageLightbox.classList.add('lightbox-single');
                 } else {
                     imageLightbox.classList.remove('lightbox-single');
                 }
+            }
+
+            // Template Management Functions
+            function openTemplateModal() {
+                templateModal.style.display = 'block';
+                document.body.style.overflow = 'hidden';
+            }
+            
+            function closeTemplateModalHandler() {
+                templateModal.style.display = 'none';
+                document.body.style.overflow = '';
+                // Reset form states
+                resetTemplateForm();
+            }
+            
+            function switchTab(tabName) {
+                // Update active tab button
+                tabButtons.forEach(btn => {
+                    btn.classList.toggle('active', btn.getAttribute('data-tab') === tabName);
+                });
+                
+                // Update active tab content
+                tabContents.forEach(content => {
+                    content.classList.toggle('active', content.id === `${tabName}Tab`);
+                });
+            }
+            
+            function setupDropzone(dropzone, fileInput, type) {
+                // Click to select file
+                dropzone.addEventListener('click', () => {
+                    fileInput.click();
+                });
+                
+                // Drag and drop handlers
+                dropzone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    dropzone.classList.add('dragover');
+                });
+                
+                dropzone.addEventListener('dragleave', (e) => {
+                    e.preventDefault();
+                    dropzone.classList.remove('dragover');
+                });
+                
+                dropzone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    dropzone.classList.remove('dragover');
+                    
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                        const file = files[0];
+                        if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+                            handleFileSelect({ target: { files: [file] } }, type);
+                        } else {
+                            showToast('Chỉ chấp nhận file CSV', 'error');
+                        }
+                    }
+                });
+            }
+            
+            function handleFileSelect(event, type) {
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+                    showToast('Chỉ chấp nhận file CSV', 'error');
+                    return;
+                }
+                
+                if (type === 'stores') {
+                    selectedStoresFile = file;
+                    updateDropzoneDisplay(storesDropzone, file);
+                    uploadStoresBtn.disabled = false;
+                } else if (type === 'categories') {
+                    selectedCategoriesFile = file;
+                    updateDropzoneDisplay(categoriesDropzone, file);
+                    uploadCategoriesBtn.disabled = false;
+                }
+            }
+            
+            function updateDropzoneDisplay(dropzone, file) {
+                dropzone.innerHTML = `
+                    <i class="fas fa-file-csv"></i>
+                    <p><strong>${file.name}</strong></p>
+                    <small>Kích thước: ${formatFileSize(file.size)}</small>
+                `;
+                dropzone.classList.add('file-selected');
+            }
+            
+            function formatFileSize(bytes) {
+                if (bytes === 0) return '0 Bytes';
+                const k = 1024;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
+            
+            async function uploadTemplate(type) {
+                const file = type === 'stores' ? selectedStoresFile : selectedCategoriesFile;
+                if (!file) {
+                    showToast('Vui lòng chọn file trước', 'error');
+                    return;
+                }
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                // Show progress
+                uploadProgress.style.display = 'block';
+                progressText.textContent = 'Đang tải lên...';
+                progressFill.style.width = '0%';
+                
+                // Disable upload button
+                const uploadBtn = type === 'stores' ? uploadStoresBtn : uploadCategoriesBtn;
+                uploadBtn.disabled = true;
+                
+                try {
+                    const endpoint = type === 'stores' ? '/api/template/upload-stores' : '/api/template/upload-categories';
+                    
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        body: formData,
+                        credentials: 'same-origin'
+                    });
+                    
+                    // Simulate progress
+                    let progress = 0;
+                    const progressInterval = setInterval(() => {
+                        progress += 10;
+                        progressFill.style.width = `${Math.min(progress, 90)}%`;
+                    }, 100);
+                    
+                    const result = await response.json();
+                    
+                    clearInterval(progressInterval);
+                    progressFill.style.width = '100%';
+                    
+                    if (response.ok) {
+                        progressText.textContent = 'Tải lên thành công!';
+                        showToast(`Đã tải lên ${result.count} ${type === 'stores' ? 'cửa hàng' : 'danh mục'}`, 'success');
+                        
+                        // Reset form after successful upload
+                        setTimeout(() => {
+                            resetTemplateForm();
+                            uploadProgress.style.display = 'none';
+                        }, 2000);
+                        
+                        // Refresh data if needed
+                        if (type === 'categories') {
+                            loadSubmissions(); // Refresh to show updated categories
+                        }
+                    } else {
+                        progressText.textContent = 'Tải lên thất bại!';
+                        showToast(result.error || 'Lỗi tải lên file', 'error');
+                        uploadBtn.disabled = false;
+                    }
+                } catch (error) {
+                    console.error('Upload error:', error);
+                    progressText.textContent = 'Lỗi kết nối!';
+                    showToast('Lỗi kết nối', 'error');
+                    uploadBtn.disabled = false;
+                }
+            }
+            
+            function resetTemplateForm() {
+                // Reset file selections
+                selectedStoresFile = null;
+                selectedCategoriesFile = null;
+                
+                // Reset file inputs
+                if (storesFileInput) storesFileInput.value = '';
+                if (categoriesFileInput) categoriesFileInput.value = '';
+                
+                // Reset dropzones
+                resetDropzone(storesDropzone, 'Kéo thả file CSV hoặc click để chọn');
+                resetDropzone(categoriesDropzone, 'Kéo thả file CSV hoặc click để chọn');
+                
+                // Disable upload buttons
+                if (uploadStoresBtn) uploadStoresBtn.disabled = true;
+                if (uploadCategoriesBtn) uploadCategoriesBtn.disabled = true;
+                
+                // Hide progress
+                if (uploadProgress) uploadProgress.style.display = 'none';
+            }
+            
+            function resetDropzone(dropzone, text) {
+                if (!dropzone) return;
+                dropzone.innerHTML = `
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <p>${text}</p>
+                    <small>Chỉ chấp nhận file .csv</small>                `;
+                dropzone.classList.remove('file-selected', 'dragover');
+            }
+
+            // User Management Functions
+            function openUserModal() {
+                userModal.style.display = 'block';
+                document.body.style.overflow = 'hidden';
+                loadUsers();
+            }
+            
+            function closeUserModalHandler() {
+                userModal.style.display = 'none';
+                document.body.style.overflow = '';
+            }
+            
+            function openUserForm(user = null) {
+                editingUserId = user ? user._id : null;
+                
+                if (user) {
+                    // Edit mode
+                    userFormTitle.innerHTML = '<i class="fas fa-user-edit"></i> Chỉnh sửa User';
+                    document.getElementById('userUsername').value = user.username || '';
+                    document.getElementById('userUserId').value = user.userId || '';
+                    document.getElementById('userTdsName').value = user.tdsName || '';
+                    document.getElementById('userPassword').value = '';
+                    document.getElementById('userPassword').placeholder = 'Bỏ trống nếu không muốn đổi mật khẩu';
+                    document.getElementById('userPassword').required = false;
+                    document.getElementById('userStatus').value = user.status || 'active';
+                } else {
+                    // Add mode
+                    userFormTitle.innerHTML = '<i class="fas fa-user-plus"></i> Thêm User Mới';
+                    userForm.reset();
+                    document.getElementById('userPassword').placeholder = '';
+                    document.getElementById('userPassword').required = true;
+                }
+                
+                userFormModal.style.display = 'block';
+                document.body.style.overflow = 'hidden';
+            }
+            
+            function closeUserFormModalHandler() {
+                userFormModal.style.display = 'none';
+                document.body.style.overflow = '';
+                userForm.reset();
+                editingUserId = null;
+            }
+            
+            async function loadUsers() {
+                showLoading(true);
+                
+                try {
+                    const response = await fetch('/api/admin/users', {
+                        credentials: 'same-origin'
+                    });
+                    
+                    if (response.ok) {
+                        users = await response.json();
+                        renderUsers();
+                        showToast('Đã tải danh sách user', 'success');
+                    } else {
+                        showToast('Không thể tải danh sách user', 'error');
+                    }
+                } catch (error) {
+                    console.error('Load users error:', error);
+                    showToast('Lỗi kết nối', 'error');
+                }
+                
+                showLoading(false);
+            }
+            
+            function renderUsers() {
+                usersTableBody.innerHTML = '';
+                
+                if (users.length === 0) {
+                    usersTableBody.innerHTML = `
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 30px;">
+                                <i class="fas fa-info-circle"></i> Không có user nào
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+                
+                users.forEach(user => {
+                    const createdDate = user.createdAt ? new Date(user.createdAt).toLocaleDateString('vi-VN') : 'N/A';
+                    const statusClass = user.status === 'active' ? 'status-active' : 'status-inactive';
+                    const statusText = user.status === 'active' ? 'Hoạt động' : 'Không hoạt động';
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${user.username || 'N/A'}</td>
+                        <td>${user.userId || 'N/A'}</td>
+                        <td>${user.tdsName || 'N/A'}</td>
+                        <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                        <td>${createdDate}</td>
+                        <td class="actions">
+                            <button class="btn-action btn-edit" data-user='${JSON.stringify(user)}' title="Chỉnh sửa">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn-action btn-toggle-status" data-id="${user._id}" data-status="${user.status}" title="Thay đổi trạng thái">
+                                <i class="fas fa-${user.status === 'active' ? 'pause' : 'play'}"></i>
+                            </button>
+                            <button class="btn-action btn-reset-password" data-id="${user._id}" title="Đặt lại mật khẩu">
+                                <i class="fas fa-key"></i>
+                            </button>
+                            ${user.username !== 'admin' ? `
+                                <button class="btn-action btn-delete-user" data-id="${user._id}" title="Xóa user">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            ` : ''}
+                        </td>
+                    `;
+                    
+                    usersTableBody.appendChild(row);
+                });
+                
+                // Add event listeners
+                document.querySelectorAll('.btn-edit').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const user = JSON.parse(btn.getAttribute('data-user'));
+                        openUserForm(user);
+                    });
+                });
+                
+                document.querySelectorAll('.btn-toggle-status').forEach(btn => {
+                    btn.addEventListener('click', () => toggleUserStatus(btn.getAttribute('data-id')));
+                });
+                
+                document.querySelectorAll('.btn-reset-password').forEach(btn => {
+                    btn.addEventListener('click', () => resetUserPassword(btn.getAttribute('data-id')));
+                });
+                
+                document.querySelectorAll('.btn-delete-user').forEach(btn => {
+                    btn.addEventListener('click', () => deleteUser(btn.getAttribute('data-id')));
+                });
+            }
+            
+            async function handleUserFormSubmit(e) {
+                e.preventDefault();
+                showLoading(true);
+                
+                const formData = new FormData(userForm);
+                const userData = {
+                    username: formData.get('username'),
+                    userId: formData.get('userId'),
+                    tdsName: formData.get('tdsName'),
+                    password: formData.get('password'),
+                    status: formData.get('status')
+                };
+                
+                // Remove empty password for edit mode
+                if (editingUserId && !userData.password) {
+                    delete userData.password;
+                }
+                
+                try {
+                    const url = editingUserId ? `/api/admin/users/${editingUserId}` : '/api/admin/users';
+                    const method = editingUserId ? 'PUT' : 'POST';
+                    
+                    const response = await fetch(url, {
+                        method: method,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(userData),
+                        credentials: 'same-origin'
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (response.ok) {
+                        showToast(editingUserId ? 'Đã cập nhật user' : 'Đã tạo user mới', 'success');
+                        closeUserFormModalHandler();
+                        loadUsers();
+                    } else {
+                        showToast(result.error || 'Lỗi xử lý', 'error');
+                    }
+                } catch (error) {
+                    console.error('User form error:', error);
+                    showToast('Lỗi kết nối', 'error');
+                }
+                
+                showLoading(false);
+            }
+            
+            async function toggleUserStatus(userId) {
+                const user = users.find(u => u._id === userId);
+                const currentStatus = user ? user.status : 'active';
+                const newStatus = currentStatus === 'active' ? 'vô hiệu hóa' : 'kích hoạt';
+                
+                if (!confirm(`Bạn có chắc chắn muốn ${newStatus} user này?`)) return;
+                
+                showLoading(true);
+                
+                try {
+                    const response = await fetch(`/api/admin/users/${userId}/toggle-status`, {
+                        method: 'POST',
+                        credentials: 'same-origin'
+                    });
+                    
+                    if (response.ok) {
+                        showToast(`Đã ${newStatus} user`, 'success');
+                        loadUsers();
+                    } else {
+                        const result = await response.json();
+                        showToast(result.error || 'Không thể thay đổi trạng thái', 'error');
+                    }
+                } catch (error) {
+                    console.error('Toggle status error:', error);
+                    showToast('Lỗi kết nối', 'error');
+                }
+                
+                showLoading(false);
+            }
+            
+            async function resetUserPassword(userId) {
+                const newPassword = prompt('Nhập mật khẩu mới:');
+                if (!newPassword || newPassword.trim().length < 3) {
+                    showToast('Mật khẩu phải có ít nhất 3 ký tự', 'error');
+                    return;
+                }
+                
+                showLoading(true);
+                
+                try {
+                    const response = await fetch(`/api/admin/users/${userId}/reset-password`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ newPassword: newPassword.trim() }),
+                        credentials: 'same-origin'
+                    });
+                    
+                    if (response.ok) {
+                        showToast('Đã đặt lại mật khẩu', 'success');
+                    } else {
+                        const result = await response.json();
+                        showToast(result.error || 'Không thể đặt lại mật khẩu', 'error');
+                    }
+                } catch (error) {
+                    console.error('Reset password error:', error);
+                    showToast('Lỗi kết nối', 'error');
+                }
+                
+                showLoading(false);
+            }
+            
+            async function deleteUser(userId) {
+                if (!confirm('Bạn có chắc chắn muốn xóa user này? Hành động này không thể hoàn tác.')) return;
+                
+                showLoading(true);
+                
+                try {
+                    const response = await fetch(`/api/admin/users/${userId}`, {
+                        method: 'DELETE',
+                        credentials: 'same-origin'
+                    });
+                    
+                    if (response.ok) {
+                        showToast('Đã xóa user', 'success');
+                        loadUsers();
+                    } else {
+                        const result = await response.json();
+                        showToast(result.error || 'Không thể xóa user', 'error');
+                    }
+                } catch (error) {
+                    console.error('Delete user error:', error);
+                    showToast('Lỗi kết nối', 'error');
+                }
+                
+                showLoading(false);
             }
         });
     </script>
