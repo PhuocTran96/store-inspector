@@ -344,19 +344,22 @@ app.get('/', (req, res) => {
 app.post('/api/submit', async (req, res) => {
   try {
     console.log('📥 Received submission request');
+    console.log('📋 Request body:', JSON.stringify(req.body, null, 2));
     
-    const { storeId, submissions, submissionType, sessionId, base64Images } = req.body;
+    const { storeId, categories, step, sessionId, userId, username, storeName } = req.body;
     
     if (!req.session.user) {
       return res.status(401).json({ error: 'User not logged in' });
     }
     
-    // Parse submissions data
-    const submissionsData = JSON.parse(submissions);
-    console.log(`📋 Processing ${submissionsData.length} category submissions`);
+    if (!categories || !Array.isArray(categories)) {
+      return res.status(400).json({ error: 'Categories data is required' });
+    }
+    
+    console.log(`📋 Processing ${categories.length} category submissions for step: ${step}`);
     
     // Find store information
-    const store = storesData.find(s => 
+    const store = storesData.find(s =>
       s.storeCode === storeId ||
       s['Store code (Fieldcheck)'] === storeId ||
       s.STT === storeId
@@ -366,60 +369,71 @@ app.post('/api/submit', async (req, res) => {
       return res.status(400).json({ error: 'Store not found' });
     }
     
-    // Process base64 images and upload to S3
-    const imageUrls = [];
+    // Process images and upload to S3
+    let totalUploadedImages = 0;
     
-    if (base64Images && base64Images.length > 0) {
-      console.log(`📤 Uploading ${base64Images.length} images to S3...`);
+    if (categories && categories.length > 0) {
       const { uploadBufferToS3 } = require('./config/s3Config');
       
-      for (let i = 0; i < base64Images.length; i++) {
-        try {
-          const base64Data = base64Images[i];
-          const matches = base64Data.match(/^data:image\/([a-zA-Z]*);base64,(.+)$/);
-          
-          if (!matches) {
-            console.warn(`⚠️ Invalid base64 image format at index ${i}`);
-            continue;
+      for (const category of categories) {
+        console.log(`📤 Uploading ${category.images?.length || 0} images for category ${category.categoryName}...`);
+        
+        const processedImages = [];
+        
+        if (category.images && category.images.length > 0) {
+          for (let i = 0; i < category.images.length; i++) {
+            try {
+              const base64Data = category.images[i];
+              const matches = base64Data.match(/^data:image\/([a-zA-Z]*);base64,(.+)$/);
+              
+              if (!matches) {
+                console.warn(`⚠️ Invalid base64 image format for category ${category.categoryId}, image ${i}`);
+                continue;
+              }
+              
+              const imageType = matches[1];
+              const imageBuffer = Buffer.from(matches[2], 'base64');
+              const filename = `${step}-${sessionId}-${category.categoryId}-${i + 1}.${imageType}`;
+              
+              const imageUrl = await uploadBufferToS3(imageBuffer, filename, `image/${imageType}`);
+              processedImages.push(imageUrl);
+              totalUploadedImages++;
+              console.log(`✅ Image ${i + 1} uploaded successfully for category ${category.categoryName}`);
+              
+            } catch (uploadError) {
+              console.error(`❌ Error uploading image ${i + 1} for category ${category.categoryName}:`, uploadError);
+            }
           }
-          
-          const imageType = matches[1];
-          const imageBuffer = Buffer.from(matches[2], 'base64');
-          const filename = `${submissionType}-${sessionId}-${i + 1}.${imageType}`;
-          
-          const imageUrl = await uploadBufferToS3(imageBuffer, filename, `image/${imageType}`);
-          imageUrls.push(imageUrl);
-          console.log(`✅ Image ${i + 1} uploaded successfully`);
-          
-        } catch (uploadError) {
-          console.error(`❌ Error uploading image ${i + 1}:`, uploadError);
-          // Continue processing other images
         }
+        
+        // Update the category with processed image URLs
+        category.processedImages = processedImages;
       }
     }
     
-    console.log(`📸 Successfully uploaded ${imageUrls.length}/${base64Images?.length || 0} images`);
+    console.log(`📸 Successfully uploaded ${totalUploadedImages} images across ${categories.length} categories`);
     
     // Create submission documents for each category
-    for (const submissionData of submissionsData) {
-      try {        const newSubmission = new Submission({
+    for (const category of categories) {
+      try {
+        const newSubmission = new Submission({
           username: req.session.user.username,
-          userId: req.session.user.id || req.session.user.userId, // Ensure userId is set
-          tdsName: (store.tdsName || store['TDS name'] || '').trim(), // Robust tdsName mapping
+          userId: req.session.user.id || req.session.user.userId,
+          tdsName: (store.tdsName || store['TDS name'] || '').trim(),
           storeId: storeId,
           storeName: store['Store name'] || store.storeName || store.name || 'Unknown Store',
           storeAddress: store.Address || store.address || '',
-          categoryId: submissionData.categoryId,
-          categoryName: submissionData.categoryName,
-          note: submissionData.note || '',
-          images: imageUrls, // All images for this submission
-          submissionType: submissionType,
+          categoryId: category.categoryId,
+          categoryName: category.categoryName,
+          note: category.note || '',
+          images: category.processedImages || [],
+          submissionType: step,
           sessionId: sessionId,
           submittedAt: new Date()
         });
         
         await newSubmission.save();
-        console.log(`✅ Saved submission for category: ${submissionData.categoryName}`);
+        console.log(`✅ Saved submission for category: ${category.categoryName} with ${category.processedImages?.length || 0} images`);
         
       } catch (saveError) {
         console.error('❌ Error saving submission:', saveError);
@@ -427,15 +441,16 @@ app.post('/api/submit', async (req, res) => {
     }
     
     console.log(`🎉 Submission completed successfully`);
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: 'Submission saved successfully',
-      imageCount: imageUrls.length
+      imageCount: totalUploadedImages
     });
     
   } catch (error) {
     console.error('❌ Submission error:', error);
-    res.status(500).json({ error: 'Failed to process submission' });  }
+    res.status(500).json({ error: 'Failed to process submission' });
+  }
 });
 
 // Get before categories for step 2
@@ -548,6 +563,15 @@ app.post('/api/login', async (req, res) => {
   } else {
     console.log('Password không khớp');
     res.status(401).json({ error: 'Invalid credentials' });
+  }
+});
+
+// Check session API
+app.get('/api/check-session', (req, res) => {
+  if (req.session.user) {
+    res.json({ success: true, user: req.session.user });
+  } else {
+    res.status(401).json({ error: 'Not authenticated' });
   }
 });
 

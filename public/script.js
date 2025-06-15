@@ -175,13 +175,19 @@ class App {
         
         // Close dropdown when clicking outside
         document.addEventListener('click', this.handleClickOutside.bind(this));
-    }
-
-    // Screen management
+    }    // Screen management
     showScreen(screenId) {
+        console.log('🖥️ showScreen() called with screenId:', screenId);
         document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
-        document.getElementById(screenId).classList.add('active');
+        const targetScreen = document.getElementById(screenId);
+        if (targetScreen) {
+            targetScreen.classList.add('active');
+            console.log('✅ Screen switched to:', screenId);
+        } else {
+            console.error('❌ Screen not found:', screenId);
+        }
     }    showLoading(show = true, message = '') {
+        console.log('⏳ showLoading() called with show:', show, 'message:', message);
         const overlay = document.getElementById('loadingOverlay');
         const loadingText = overlay.querySelector('.loading-text');
         
@@ -192,6 +198,7 @@ class App {
         }
         
         overlay.classList.toggle('active', show);
+        console.log('⏳ Loading overlay is now:', show ? 'VISIBLE' : 'HIDDEN');
     }
 
     showToast(message, type = 'info') {
@@ -371,6 +378,7 @@ class App {
             this.loadStores();
         }
     }    async loadStores() {
+        console.log('📋 loadStores() called');
         this.showLoading(true);
 
         try {
@@ -392,7 +400,9 @@ class App {
                 this.filteredStores = stores; // Ban đầu hiển thị tất cả
                 await this.loadStoreNames(); // Load store names cho autocomplete
                 this.renderStores(stores);
+                console.log('🎯 Calling showScreen(storeScreen)...');
                 this.showScreen('storeScreen');
+                console.log('✅ loadStores() completed successfully');
             } else {
                 const errorText = await response.text();
                 console.error('API Error:', response.status, errorText);
@@ -402,6 +412,7 @@ class App {
             console.error('Fetch error:', error);
             this.showToast('Lỗi kết nối', 'error');
         } finally {
+            console.log('🔄 Hiding loading overlay...');
             this.showLoading(false);
         }
     }
@@ -464,6 +475,7 @@ class App {
             storeList.appendChild(adminItem);
         }
     }    showStores() {
+        console.log('🏪 showStores() called');
         // Reset search filter when returning to stores
         const searchInput = document.getElementById('storeSearch');
         const clearButton = document.getElementById('clearFilter');
@@ -472,8 +484,9 @@ class App {
             clearButton.classList.remove('show');
             this.hideDropdown();
         }
+        console.log('🔄 Calling loadStores()...');
         this.loadStores();
-    }    async selectStore(store) {
+    }async selectStore(store) {
         this.currentStore = store;
         this.sessionId = new Date().toISOString(); // Generate new session ID
         this.currentStep = 'before'; // Start with "before" step
@@ -489,35 +502,52 @@ class App {
         if (this.currentStep !== 'before') return;
         
         try {
-            // Submit "before" photos first
-            const submitResult = await this.handleSubmit('before');
+            // Check if we have any photos to proceed with
+            const categoriesWithPhotos = Object.values(this.categoryData).filter(data =>
+                (data.beforeImages && data.beforeImages.length > 0) || (data.beforeNote && data.beforeNote.trim())
+            );
             
-            if (!submitResult) {
-                throw new Error('Before submission failed');
+            if (categoriesWithPhotos.length === 0) {
+                throw new Error('Vui lòng chụp ít nhất 1 ảnh trước khi tiếp tục');
             }
             
-            // Wait a moment for database insertion to complete
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // Store before categories locally (no server upload yet)
+            this.beforeCategories = categoriesWithPhotos.map(data => ({
+                categoryId: data.id,
+                categoryName: data.name,
+                imageCount: data.beforeImages ? data.beforeImages.length : 0
+            }));
             
-            // Load categories that have "before" submissions
-            await this.loadBeforeCategories();
-            
-            // Check if we have any before categories
-            if (this.beforeCategories.length === 0) {
-                throw new Error('No before categories found. Please make sure your photos were submitted successfully.');
-            }
+            console.log('Before categories stored locally:', this.beforeCategories);
             
             // Switch to "after" step
             this.currentStep = 'after';
+            
+            // Update display to show after data
+            this.updateCategoryDisplayForCurrentStep();
+            
             document.getElementById('selectedStoreName').textContent = `${this.currentStore['Store name']} - Bước 2: Chọn danh mục cần chụp ảnh SAU cải thiện`;
             
-            this.renderAfterCategorySelection();
+            // Ensure we're on the category screen before rendering
+            this.showScreen('categoryScreen');
+            
+            // Add a small delay to ensure DOM is ready
+            setTimeout(() => {
+                this.renderAfterCategorySelection();
+                
+                // Re-render all category images to show correct data for after step
+                this.categories.forEach(category => {
+                    this.renderCategoryImages(category.ID);
+                });
+            }, 50);
+            
+            this.saveSession(); // Save session with new step and before categories
             
         } catch (error) {
             console.error('Error proceeding to after step:', error);
             this.showToast(error.message || 'Không thể chuyển sang bước 2', 'error');
         }
-    }    async loadBeforeCategories() {
+    }async loadBeforeCategories() {
         try {
             const storeId = this.currentStore['Store code (Fieldcheck)'] || this.currentStore.STT;
             console.log(`Loading before categories for store: ${storeId}, sessionId: ${this.sessionId}`);
@@ -543,6 +573,18 @@ class App {
         }
     }    renderAfterCategorySelection() {
         const categoryList = document.getElementById('categoryList');
+        
+        // Add error handling for missing element
+        if (!categoryList) {
+            console.error('categoryList element not found. Make sure you are on the category screen.');
+            // Try to switch to category screen first
+            this.showScreen('categoryScreen');
+            // Retry after a short delay
+            setTimeout(() => {
+                this.renderAfterCategorySelection();
+            }, 100);
+            return;
+        }
         
         if (!this.beforeCategories || this.beforeCategories.length === 0) {
             categoryList.innerHTML = `
@@ -614,21 +656,67 @@ class App {
             return;
         }
         
-        // Filter categories to only selected ones for "after" photos
-        this.categories = this.categories.filter(category => 
-            this.selectedAfterCategories.includes(category.ID)
-        );
+        // Don't filter categories - we need to keep all data
+        // Just switch to showing the selected categories for after photos
         
         document.getElementById('selectedStoreName').textContent = `${this.currentStore['Store name']} - Bước 2: Chụp ảnh SAU cải thiện`;
         
-        this.initializeCategoryData();
-        this.renderCategories();
+        // Show only selected categories for after photos
+        this.renderSelectedAfterCategories();
+        
+        // Re-render images for selected categories to show after data
+        this.selectedAfterCategories.forEach(categoryId => {
+            this.renderCategoryImages(categoryId);
+        });
+        
+        this.saveSession();
+    }
+
+    renderSelectedAfterCategories() {
+        const categoryList = document.getElementById('categoryList');
+        categoryList.innerHTML = '';
+
+        // Only show the selected categories for after photos
+        this.categories.filter(category => 
+            this.selectedAfterCategories.includes(category.ID)
+        ).forEach(category => {
+            const categoryItem = document.createElement('div');
+            categoryItem.className = 'category-item';
+            categoryItem.innerHTML = this.getCategoryHTML(category);
+            categoryList.appendChild(categoryItem);
+        });
+
         this.updateSubmitButton();
-    }backToBeforeStep() {
+        this.updateSubmitButton();
+    }    backToBeforeStep() {
         this.currentStep = 'before';
         this.selectedAfterCategories = [];
+        
+        // Update the display to show before data
+        this.updateCategoryDisplayForCurrentStep();
+        
         document.getElementById('selectedStoreName').textContent = `${this.currentStore['Store name']} - Bước 1: Chụp ảnh TRƯỚC cải thiện`;
-        this.loadCategories(); // Reload all categories
+        this.renderCategories(); // Re-render with before data
+        
+        // Re-render all category images to show delete buttons for before images
+        this.categories.forEach(category => {
+            this.renderCategoryImages(category.ID);
+        });
+        
+        this.saveSession(); // Save session state
+    }
+
+    updateCategoryDisplayForCurrentStep() {
+        // Update the legacy images/note fields based on current step
+        for (const [categoryId, data] of Object.entries(this.categoryData)) {
+            if (this.currentStep === 'before') {
+                data.images = [...(data.beforeImages || [])];
+                data.note = data.beforeNote || '';
+            } else {
+                data.images = [...(data.afterImages || [])];
+                data.note = data.afterNote || '';
+            }
+        }
     }
 
     // Category management
@@ -656,6 +744,12 @@ class App {
             this.categoryData[category.ID] = {
                 id: category.ID,
                 name: category.Category, // Use 'Category' field from CSV
+                // Separate before and after data
+                beforeImages: [],
+                beforeNote: '',
+                afterImages: [],
+                afterNote: '',
+                // Legacy support for current step
                 images: [],
                 note: ''
             };
@@ -721,658 +815,438 @@ class App {
     getImagePreviewHTML(images, categoryId) {
         return images.map((image, index) => `
             <div class="image-preview-item">
-                <img src="${image}" alt="Preview ${index + 1}">
-                <div class="image-actions">
-                    <button class="image-retake" onclick="app.retakeImage('${categoryId}', ${index})" title="Chụp lại ảnh này">
-                        <i class="fas fa-camera"></i>
-                    </button>
-                    <button class="image-remove" onclick="app.removeImage('${categoryId}', ${index})" title="Xóa ảnh này">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <span class="image-number">${index + 1}</span>
+                <img src="${image}" alt="Preview ${index + 1}" onclick="app.viewImage('${image}')">
+                <button class="remove-image-btn" onclick="app.removeImage('${categoryId}', ${index})">
+                    <i class="fas fa-times"></i>
+                </button>
             </div>
         `).join('');
     }
 
-    triggerImageUpload(categoryId) {
-        const data = this.categoryData[categoryId];
-        if (data.images.length >= 8) {
-            this.showToast('Tối đa 8 ảnh cho mỗi danh mục', 'error');
-            return;
-        }
-        document.getElementById(`fileInput-${categoryId}`).click();
-    }
-
+    // Image handling
     triggerCameraCapture(categoryId) {
-        const data = this.categoryData[categoryId];
-        if (data.images.length >= 8) {
-            this.showToast('Tối đa 8 ảnh cho mỗi danh mục', 'error');
-            return;
-        }
         document.getElementById(`cameraInput-${categoryId}`).click();
     }
-    
+
     triggerFileUpload(categoryId) {
-        const data = this.categoryData[categoryId];
-        if (data.images.length >= 8) {
-            this.showToast('Tối đa 8 ảnh cho mỗi danh mục', 'error');
-            return;
-        }
         document.getElementById(`fileInput-${categoryId}`).click();
-    }
-    
-    retakeImage(categoryId, imageIndex) {
-        // Store the index for replacement
-        this.retakeIndex = imageIndex;
-        this.retakeCategoryId = categoryId;
-        
-        // Show options for retaking
-        const options = [
-            { text: 'Chụp ảnh mới', action: () => this.retakeWithCamera(categoryId, imageIndex) },
-            { text: 'Chọn từ thiết bị', action: () => this.retakeWithFile(categoryId, imageIndex) }
-        ];
-        
-        this.showRetakeOptions(options);
-    }
-    
-    showRetakeOptions(options) {
-        // Create a simple modal for retake options
-        const modal = document.createElement('div');
-        modal.className = 'retake-modal';
-        modal.innerHTML = `
-            <div class="retake-modal-content">
-                <h3>Chụp lại ảnh</h3>
-                <div class="retake-options">
-                    ${options.map((option, index) => `
-                        <button class="retake-option-btn" data-index="${index}">
-                            ${option.text}
-                        </button>
-                    `).join('')}
-                </div>
-                <button class="retake-cancel-btn">Hủy</button>
-            </div>
-        `;
-        
-        // Add event listeners
-        modal.addEventListener('click', (e) => {
-            if (e.target.classList.contains('retake-option-btn')) {
-                const index = parseInt(e.target.dataset.index);
-                options[index].action();
-                document.body.removeChild(modal);
-            } else if (e.target.classList.contains('retake-cancel-btn') || e.target === modal) {
-                document.body.removeChild(modal);
-            }
-        });
-        
-        document.body.appendChild(modal);
-    }
-    
-    retakeWithCamera(categoryId, imageIndex) {
-        // Create a temporary input for camera capture
-        const tempInput = document.createElement('input');
-        tempInput.type = 'file';
-        tempInput.accept = 'image/*';
-        tempInput.capture = 'environment';
-        tempInput.onchange = (e) => {
-            this.handleImageRetake(categoryId, imageIndex, e.target);
-        };
-        tempInput.click();
-    }
-    
-    retakeWithFile(categoryId, imageIndex) {
-        // Create a temporary input for file selection
-        const tempInput = document.createElement('input');
-        tempInput.type = 'file';
-        tempInput.accept = 'image/*';
-        tempInput.onchange = (e) => {
-            this.handleImageRetake(categoryId, imageIndex, e.target);
-        };
-        tempInput.click();
-    }
-    
-    async handleImageRetake(categoryId, imageIndex, input) {
-        const files = Array.from(input.files);
-        if (files.length === 0) return;
-        
-        const file = files[0]; // Only take the first file for retake
-        
-        // Validate file type
-        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-        if (!allowedTypes.includes(file.type)) {
-            this.showToast('Chỉ hỗ trợ định dạng ảnh: JPG, PNG, WEBP', 'error');
-            return;
-        }
-        
-        // Check file size (max 10MB)
-        const maxSize = 10 * 1024 * 1024; // 10MB
-        if (file.size > maxSize) {
-            this.showToast('Kích thước ảnh không được vượt quá 10MB', 'error');
-            return;
-        }
-        
-        this.showLoading(true, 'Đang xử lý ảnh mới...');
-        
-        try {
-            const compressedDataUrl = await this.compressImage(file);
-            
-            // Replace the image at the specified index
-            const data = this.categoryData[categoryId];
-            data.images[imageIndex] = compressedDataUrl;
-            
-            this.updateCategoryDisplay(categoryId);
-            this.saveSession(); // Save session after retaking photo
-            this.showToast('Đã thay thế ảnh thành công', 'success');
-        } catch (error) {
-            console.error('Error retaking image:', error);
-            this.showToast('Lỗi xử lý ảnh', 'error');
-        } finally {
-            this.showLoading(false);
-        }
-    }
-
-    async handleImageUpload(categoryId, input) {
+    }    async handleImageUpload(categoryId, input) {
         const files = Array.from(input.files);
         const data = this.categoryData[categoryId];
         
-        if (data.images.length + files.length > 8) {
-            this.showToast('Tối đa 8 ảnh cho mỗi danh mục', 'error');
+        // Determine which image array to use based on current step
+        const currentImages = this.currentStep === 'before' ? data.beforeImages : data.afterImages;
+        
+        if (currentImages.length + files.length > 8) {
+            this.showToast('Tối đa 8 ảnh mỗi danh mục', 'error');
             return;
         }
 
-        // Validate file types
-        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-        const invalidFiles = files.filter(file => !allowedTypes.includes(file.type));
-        if (invalidFiles.length > 0) {
-            this.showToast('Chỉ hỗ trợ định dạng ảnh: JPG, PNG, WEBP', 'error');
-            return;
-        }
+        this.showLoading(true, 'Đang xử lý ảnh...');
 
-        // Check file sizes (max 10MB per file)
-        const maxSize = 10 * 1024 * 1024; // 10MB
-        const oversizedFiles = files.filter(file => file.size > maxSize);
-        if (oversizedFiles.length > 0) {
-            this.showToast('Kích thước ảnh không được vượt quá 10MB', 'error');
-            return;
-        }
-
-        this.showLoading(true, 'Đang xử lý ảnh...');        try {
-            let totalOriginalSize = 0;
-            let totalCompressedSize = 0;
-            
-            // Process files one by one with progress
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                const progressMessage = files.length > 1 ? 
-                    `Đang xử lý ảnh ${i + 1}/${files.length}...` : 
-                    'Đang nén ảnh...';
-                
-                // Update loading message
-                const loadingText = document.querySelector('.loading-text');
-                if (loadingText) {
-                    loadingText.textContent = progressMessage;
-                }
-                
-                totalOriginalSize += file.size;
-                const compressedDataUrl = await this.compressImage(file);
-                totalCompressedSize += Math.round(compressedDataUrl.length * 0.75);
-                
-                data.images.push(compressedDataUrl);
-                this.updateCategoryDisplay(categoryId);
+        try {
+            for (const file of files) {
+                const compressedImage = await this.compressImage(file);
+                currentImages.push(compressedImage);
             }
             
-            // Show compression summary
-            const totalSavings = ((totalOriginalSize - totalCompressedSize) / totalOriginalSize * 100).toFixed(1);
-            const message = files.length === 1 ?
-                `Đã thêm 1 ảnh (tiết kiệm ${totalSavings}% dung lượng)` :
-                `Đã thêm ${files.length} ảnh (tiết kiệm ${totalSavings}% dung lượng)`;
-                
-            this.showToast(message, 'success');
-            this.saveSession(); // Save session after adding photos
+            // Update legacy images array for current step (for rendering)
+            data.images = [...currentImages];
+            
+            this.renderCategoryImages(categoryId);
+            this.updateSubmitButton();
+            this.saveSession(); // Save after adding images
         } catch (error) {
             console.error('Error processing images:', error);
             this.showToast('Lỗi xử lý ảnh', 'error');
         } finally {
             this.showLoading(false);
+            input.value = ''; // Reset input
         }
-
-        // Clear input
-        input.value = '';
     }
 
-    /**
-     * Compress image to reduce file size while maintaining good quality
-     * @param {File} file - The image file to compress
-     * @returns {Promise<string>} - The compressed image as data URL
-     */
-    async compressImage(file) {
-        return new Promise((resolve, reject) => {
+    async compressImage(file, maxWidth = 1200, quality = 0.8) {
+        return new Promise((resolve) => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             const img = new Image();
-
+            
             img.onload = () => {
-                try {
-                    // Calculate optimal dimensions
-                    const { width, height } = this.calculateOptimalSize(img.width, img.height);
-                    
-                    canvas.width = width;
-                    canvas.height = height;
-
-                    // Enable image smoothing for better quality
-                    ctx.imageSmoothingEnabled = true;
-                    ctx.imageSmoothingQuality = 'high';
-
-                    // Draw and compress
-                    ctx.drawImage(img, 0, 0, width, height);
-
-                    // Determine optimal quality and format
-                    const { quality, format } = this.getOptimalQuality(file.size);
-                    
-                    const compressedDataUrl = canvas.toDataURL(format, quality);
-                          // Check compression effectiveness
-                const originalSize = file.size;
-                const compressedSize = Math.round(compressedDataUrl.length * 0.75); // Rough estimate
-                const compressionRatio = ((originalSize - compressedSize) / originalSize * 100).toFixed(1);
-                
-                console.log(`📸 Image compressed: ${file.name}`);
-                console.log(`   Original: ${this.formatFileSize(originalSize)} (${img.width}x${img.height})`);
-                console.log(`   Compressed: ${this.formatFileSize(compressedSize)} (${width}x${height})`);
-                console.log(`   Reduction: ${compressionRatio}% | Quality: ${(quality * 100).toFixed(0)}%`);
-                
-                resolve(compressedDataUrl);
-                } catch (error) {
-                    reject(error);
+                // Calculate new dimensions
+                let { width, height } = img;
+                if (width > maxWidth) {
+                    height = (height * maxWidth) / width;
+                    width = maxWidth;
                 }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                // Draw and compress
+                ctx.drawImage(img, 0, 0, width, height);
+                const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+                resolve(compressedDataUrl);
             };
-
-            img.onerror = () => reject(new Error('Failed to load image'));
+            
             img.src = URL.createObjectURL(file);
         });
     }
 
-    /**
-     * Calculate optimal image dimensions for compression
-     * @param {number} originalWidth - Original image width
-     * @param {number} originalHeight - Original image height
-     * @returns {Object} - Optimal width and height
-     */
-    calculateOptimalSize(originalWidth, originalHeight) {
-        const MAX_WIDTH = 1920;
-        const MAX_HEIGHT = 1920;
-        const MAX_PIXELS = 2073600; // 1920x1080
-
-        let { width, height } = { width: originalWidth, height: originalHeight };
-
-        // If image is very large, scale down to reasonable size
-        if (width * height > MAX_PIXELS) {
-            const scale = Math.sqrt(MAX_PIXELS / (width * height));
-            width = Math.round(width * scale);
-            height = Math.round(height * scale);
-        }
-
-        // Ensure dimensions don't exceed maximums
-        if (width > MAX_WIDTH) {
-            const scale = MAX_WIDTH / width;
-            width = MAX_WIDTH;
-            height = Math.round(height * scale);
-        }
-
-        if (height > MAX_HEIGHT) {
-            const scale = MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-            width = Math.round(width * scale);
-        }
-
-        return { width, height };
-    }
-
-    /**
-     * Determine optimal quality and format based on file size
-     * @param {number} fileSize - Original file size in bytes
-     * @returns {Object} - Optimal quality and format
-     */
-    getOptimalQuality(fileSize) {
-        const MB = 1024 * 1024;
-        
-        // For very large files, use more aggressive compression
-        if (fileSize > 5 * MB) {
-            return { quality: 0.6, format: 'image/jpeg' };
-        } else if (fileSize > 2 * MB) {
-            return { quality: 0.7, format: 'image/jpeg' };
-        } else if (fileSize > 1 * MB) {
-            return { quality: 0.8, format: 'image/jpeg' };
-        } else {
-            return { quality: 0.85, format: 'image/jpeg' };
-        }
-    }
-
-    /**
-     * Format file size for display
-     * @param {number} bytes - File size in bytes
-     * @returns {string} - Formatted file size
-     */
-    formatFileSize(bytes) {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-
-    removeImage(categoryId, imageIndex) {
+    renderCategoryImages(categoryId) {
+        const previewContainer = document.getElementById(`imagePreview-${categoryId}`);
         const data = this.categoryData[categoryId];
-        data.images.splice(imageIndex, 1);
-        this.updateCategoryDisplay(categoryId);
+        previewContainer.innerHTML = this.getImagePreviewHTML(data.images, categoryId);
+        
+        // Update image count
+        const countElement = previewContainer.parentElement.querySelector('.image-count');
+        countElement.textContent = `${data.images.length}/8`;
+    }    removeImage(categoryId, index) {
+        const data = this.categoryData[categoryId];
+        
+        // Remove from the correct array based on current step
+        const currentImages = this.currentStep === 'before' ? data.beforeImages : data.afterImages;
+        currentImages.splice(index, 1);
+        
+        // Update legacy images array for rendering
+        data.images = [...currentImages];
+        
+        this.renderCategoryImages(categoryId);
+        this.updateSubmitButton();
+        this.saveSession(); // Save after removing image
     }
 
-    updateNote(categoryId, note) {
-        this.categoryData[categoryId].note = note;
-        this.updateSubmitButton();
+    viewImage(imageSrc) {
+        // Create modal to view full-size image
+        const modal = document.createElement('div');
+        modal.className = 'image-modal';
+        modal.innerHTML = `
+            <div class="image-modal-content">
+                <span class="image-modal-close">&times;</span>
+                <img src="${imageSrc}" alt="Full size image">
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Close modal events
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal || e.target.className === 'image-modal-close') {
+                document.body.removeChild(modal);
+            }
+        });
+    }    updateNote(categoryId, note) {
+        const data = this.categoryData[categoryId];
+        
+        // Update the correct note field based on current step
+        if (this.currentStep === 'before') {
+            data.beforeNote = note;
+        } else {
+            data.afterNote = note;
+        }
+        
+        // Update legacy note field for compatibility
+        data.note = note;
+        
+        this.saveSession(); // Save after updating note
     }
 
-    updateCategoryDisplay(categoryId) {
-        const category = this.categories.find(c => c.ID === categoryId);
-        const categoryElement = document.querySelector(`#categoryList .category-item:nth-child(${this.categories.indexOf(category) + 1})`);
-        categoryElement.innerHTML = this.getCategoryHTML(category);
-        this.updateSubmitButton();
-    }    updateSubmitButton() {
-        const hasAnyImages = Object.values(this.categoryData).some(data => data.images.length > 0);
+    // Submit handling
+    updateSubmitButton() {
         const submitBtn = document.getElementById('submitBtn');
+        const proceedBtn = document.getElementById('proceedToAfterBtn');
+        
+        const hasImages = Object.values(this.categoryData).some(data => data.images.length > 0);
         
         if (this.currentStep === 'before') {
-            submitBtn.innerHTML = '<i class="fas fa-arrow-right"></i> Tiếp tục bước 2';
-            submitBtn.style.display = hasAnyImages ? 'block' : 'none';
+            // Show proceed button for "before" step
+            if (proceedBtn) {
+                proceedBtn.style.display = hasImages ? 'block' : 'none';
+            }
+            if (submitBtn) {
+                submitBtn.style.display = 'none';
+            }
         } else if (this.currentStep === 'after') {
-            submitBtn.innerHTML = '<i class="fas fa-check"></i> Hoàn thành kiểm tra';
-            submitBtn.style.display = hasAnyImages ? 'block' : 'none';
+            // Show submit button for "after" step
+            if (submitBtn) {
+                submitBtn.style.display = hasImages ? 'block' : 'none';
+            }
+            if (proceedBtn) {
+                proceedBtn.style.display = 'none';
+            }
         }
-    }// Submission
-    async handleSubmit(forcedSubmissionType = null) {
-        const submissionData = Object.values(this.categoryData)
-            .filter(data => data.images.length > 0)
-            .map(data => ({
-                categoryId: data.id,
-                categoryName: data.name,
-                note: data.note,
-                imageCount: data.images.length
-            }));
+    }
 
-        if (submissionData.length === 0) {
-            this.showToast('Vui lòng chụp ít nhất 1 ảnh', 'error');
+    async handleSubmitClick() {
+        if (this.currentStep === 'after') {
+            await this.handleSubmit('after');
+        }
+    }    async handleSubmit(step) {
+        if (step === 'after') {
+            // For step 2 (after), submit both before and after data
+            await this.submitBothSteps();
+        } else {
+            // For step 1 (before), this shouldn't happen in the new workflow
+            this.showToast('Vui lòng hoàn thành bước 2 để gửi dữ liệu', 'error');
+        }
+    }    async submitBothSteps() {
+        // Get step 1 (before) data - categories that have before images
+        const beforeCategoriesWithData = [];
+        
+        // Get step 2 (after) data - only selected categories with after images
+        const afterCategoriesWithData = [];
+        
+        // Separate before and after data
+        for (const [categoryId, data] of Object.entries(this.categoryData)) {
+            // Check if this category has before images (from step 1)
+            if (data.beforeImages && data.beforeImages.length > 0) {
+                beforeCategoriesWithData.push({
+                    id: categoryId,
+                    name: data.name,
+                    images: data.beforeImages,
+                    note: data.beforeNote || ''
+                });
+            }
+            
+            // Check if this category was selected for after and has after images
+            if (this.selectedAfterCategories.includes(categoryId) && 
+                data.afterImages && data.afterImages.length > 0) {
+                afterCategoriesWithData.push({
+                    id: categoryId,
+                    name: data.name,
+                    images: data.afterImages,
+                    note: data.afterNote || ''
+                });
+            }
+        }
+
+        if (beforeCategoriesWithData.length === 0) {
+            this.showToast('Vui lòng chụp ít nhất 1 ảnh ở bước 1', 'error');
             return;
         }
 
-        // Determine submission type
-        let submissionType = forcedSubmissionType || this.currentStep;
-        
-        // Generate session ID if it doesn't exist (for linking before/after)
-        if (!this.sessionId) {
-            this.sessionId = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
-        }        this.showLoading(true, submissionType === 'before' ? 'Đang gửi ảnh TRƯỚC...' : 'Đang gửi ảnh SAU...');
-        
+        if (afterCategoriesWithData.length === 0) {
+            this.showToast('Vui lòng chụp ít nhất 1 ảnh ở bước 2', 'error');
+            return;
+        }
+
+        this.showLoading(true, 'Đang gửi dữ liệu...');
+
         try {
-            // Collect all base64 images from categories
-            const base64Images = [];
-            Object.values(this.categoryData).forEach(data => {
-                data.images.forEach(imageDataUrl => {
-                    base64Images.push(imageDataUrl);
-                });
-            });
-
-            console.log(`📸 Preparing to send ${base64Images.length} images`);
-
-            // Use store code or fall back to STT if store code is not available
             const storeId = this.currentStore['Store code (Fieldcheck)'] || this.currentStore.STT;
             
-            // Prepare submission data
-            const submitData = {
+            // Submit step 1 (before) data
+            const beforeSubmissionData = {
+                userId: this.currentUser.id,
+                username: this.currentUser.username,
                 storeId: storeId,
-                submissions: JSON.stringify(submissionData),
-                submissionType: submissionType,
+                storeName: this.currentStore['Store name'],
+                step: 'before',
                 sessionId: this.sessionId,
-                base64Images: base64Images // Send images as base64 array
+                categories: beforeCategoriesWithData.map(data => ({
+                    categoryId: data.id,
+                    categoryName: data.name,
+                    images: data.images,
+                    note: data.note
+                }))
             };
 
-            console.log(`📤 Sending submission with ${base64Images.length} images`);
-
-            const response = await fetch('/api/submit', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(submitData)
+            console.log('Submitting step 1 (before) data:', {
+                categoriesCount: beforeSubmissionData.categories.length,
+                sessionId: this.sessionId
             });
 
-            if (response.ok) {
-                if (submissionType === 'before') {
-                    this.showToast('Đã lưu ảnh TRƯỚC! Chuyển sang bước 2...', 'success');
-                    // Don't reset data here, wait for the after step workflow
-                    return true; // Return success for before step
-                } else {
-                    this.showToast('Hoàn thành kiểm tra! Đã gửi tất cả ảnh.', 'success');
-                    // Reset everything after completing the workflow
-                    this.currentStep = 'before';
-                    this.sessionId = null;
-                    this.beforeCategories = [];
-                    this.selectedAfterCategories = [];
-                    this.initializeCategoryData();
-                    this.renderCategories();
-                    this.showStores(); // Go back to store selection
-                    return true; // Return success for after step
+            const beforeResponse = await fetch('/api/submit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(beforeSubmissionData)
+            });
+
+            if (!beforeResponse.ok) {
+                const errorData = await beforeResponse.json();
+                throw new Error(errorData.error || 'Gửi dữ liệu bước 1 thất bại');
+            }
+
+            // Submit step 2 (after) data
+            const afterSubmissionData = {
+                userId: this.currentUser.id,
+                username: this.currentUser.username,
+                storeId: storeId,
+                storeName: this.currentStore['Store name'],
+                step: 'after',
+                sessionId: this.sessionId,
+                categories: afterCategoriesWithData.map(data => ({
+                    categoryId: data.id,
+                    categoryName: data.name,
+                    images: data.images,
+                    note: data.note
+                }))
+            };
+
+            console.log('Submitting step 2 (after) data:', {
+                categoriesCount: afterSubmissionData.categories.length,
+                sessionId: this.sessionId
+            });
+
+            const afterResponse = await fetch('/api/submit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(afterSubmissionData)
+            });            if (!afterResponse.ok) {
+                const errorData = await afterResponse.json();
+                throw new Error(errorData.error || 'Gửi dữ liệu bước 2 thất bại');
+            }            // Both submissions successful
+            console.log('✅ Both submissions completed successfully');
+            this.showToast('Gửi dữ liệu thành công! Cảm ơn bạn đã hoàn thành kiểm tra.', 'success');
+            
+            // Clear session after successful submission
+            this.clearSession();
+            
+            // Reset app state
+            this.currentStore = null;
+            this.currentStep = 'before';
+            this.sessionId = null;
+            this.beforeCategories = [];
+            this.selectedAfterCategories = [];
+            this.categoryData = {};
+            
+            console.log('🔄 Starting redirect process...');
+            // Hide loading overlay first
+            this.showLoading(false);            // Return to stores screen with a small delay to let UI update
+            setTimeout(() => {
+                console.log('🏪 Calling showStores()...');
+                try {
+                    this.showStores();
+                    console.log('✅ showStores() completed successfully');
+                } catch (error) {
+                    console.error('❌ Error in showStores():', error);
+                    // Fallback: try to show the store screen directly
+                    console.log('🔄 Fallback: showing store screen directly...');
+                    this.showScreen('storeScreen');
                 }
-            } else {
-                const error = await response.json();
-                this.showToast(error.error || 'Gửi thất bại', 'error');
-                return false; // Return failure
-            }
-        } catch (error) {
-            this.showToast('Lỗi kết nối', 'error');
-            return false; // Return failure
-        } finally {
-            this.showLoading(false);
+            }, 500);} catch (error) {
+            console.error('Error submitting data:', error);
+            this.showToast(error.message || 'Lỗi gửi dữ liệu', 'error');
+            this.showLoading(false); // Hide loading on error
         }
     }
 
-    dataURLtoBlob(dataURL) {
-        const arr = dataURL.split(',');
-        const mime = arr[0].match(/:(.*?);/)[1];
-        const bstr = atob(arr[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) {
-            u8arr[n] = bstr.charCodeAt(n);
-        }
-        return new Blob([u8arr], { type: mime });
-    }
-
-    // Admin functions
-    async handleExport() {
-        this.showLoading(true);
-        try {
-            const response = await fetch('/api/admin/export');
-            if (response.ok) {
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                a.download = `submissions_${new Date().toISOString().split('T')[0]}.xlsx`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                this.showToast('Xuất file thành công', 'success');
-            } else {
-                this.showToast('Lỗi xuất file', 'error');
-            }
-        } catch (error) {
-            this.showToast('Lỗi kết nối', 'error');
-        } finally {
-            this.showLoading(false);
-        }
-    }
-
-    // Store search and filter methods
+    // Store search functionality
     handleStoreSearch(e) {
         const searchTerm = e.target.value.toLowerCase().trim();
-        this.selectedDropdownIndex = -1;
-        
-        // Show/hide clear button
         const clearButton = document.getElementById('clearFilter');
-        if (searchTerm) {
-            clearButton.classList.add('show');
-        } else {
-            clearButton.classList.remove('show');
-        }
-
+        
         if (searchTerm === '') {
-            this.hideDropdown();
             this.filteredStores = this.allStores;
-            this.renderStores(this.filteredStores);
-            return;
+            clearButton.classList.remove('show');
+            this.hideDropdown();
+        } else {
+            // Filter stores based on search term
+            this.filteredStores = this.allStores.filter(store =>
+                store['Store name'].toLowerCase().includes(searchTerm) ||
+                (store['Store code (Fieldcheck)'] && store['Store code (Fieldcheck)'].toLowerCase().includes(searchTerm)) ||
+                (store['Address (No.Street, Ward/District, City, Province/State/Region)'] &&
+                 store['Address (No.Street, Ward/District, City, Province/State/Region)'].toLowerCase().includes(searchTerm))
+            );
+            clearButton.classList.add('show');
+            this.showDropdown(searchTerm);
         }
-
-        // Filter store names for autocomplete
-        const matchingStoreNames = this.allStoreNames.filter(store => 
-            store.name.toLowerCase().includes(searchTerm) ||
-            store.code.toLowerCase().includes(searchTerm) ||
-            store.address.toLowerCase().includes(searchTerm)
-        ).slice(0, 10); // Limit to 10 results
-
-        this.showDropdown(matchingStoreNames, searchTerm);
-
-        // Filter actual stores in the list
-        this.filteredStores = this.allStores.filter(store => 
-            store['Store name'].toLowerCase().includes(searchTerm) ||
-            store['Store code (Fieldcheck)'].toLowerCase().includes(searchTerm) ||
-            store['Address (No.Street, Ward/District, City, Province/State/Region)'].toLowerCase().includes(searchTerm)
-        );
-
+        
         this.renderStores(this.filteredStores);
+        this.selectedDropdownIndex = -1; // Reset selection
     }
 
     handleSearchKeydown(e) {
-        const dropdown = document.getElementById('storeDropdown');
-        const items = dropdown.querySelectorAll('.dropdown-item:not(.no-results)');
+        const dropdown = document.getElementById('searchDropdown');
+        const items = dropdown.querySelectorAll('.dropdown-item');
+        
+        switch(e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                this.selectedDropdownIndex = Math.min(this.selectedDropdownIndex + 1, items.length - 1);
+                this.updateDropdownSelection(items);
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                this.selectedDropdownIndex = Math.max(this.selectedDropdownIndex - 1, -1);
+                this.updateDropdownSelection(items);
+                break;
+            case 'Enter':
+                e.preventDefault();
+                if (this.selectedDropdownIndex >= 0 && items[this.selectedDropdownIndex]) {
+                    const storeName = items[this.selectedDropdownIndex].textContent;
+                    document.getElementById('storeSearch').value = storeName;
+                    this.hideDropdown();
+                    this.handleStoreSearch({ target: { value: storeName } });
+                }
+                break;
+            case 'Escape':
+                this.hideDropdown();
+                break;
+        }
+    }
 
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            this.selectedDropdownIndex = Math.min(this.selectedDropdownIndex + 1, items.length - 1);
-            this.highlightDropdownItem(items);
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            this.selectedDropdownIndex = Math.max(this.selectedDropdownIndex - 1, -1);
-            this.highlightDropdownItem(items);
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            if (this.selectedDropdownIndex >= 0 && items[this.selectedDropdownIndex]) {
-                this.selectStoreFromDropdown(items[this.selectedDropdownIndex]);
-            }
-        } else if (e.key === 'Escape') {
+    handleSearchFocus() {
+        const searchTerm = document.getElementById('storeSearch').value.toLowerCase().trim();
+        if (searchTerm) {
+            this.showDropdown(searchTerm);
+        }
+    }
+
+    showDropdown(searchTerm) {
+        const dropdown = document.getElementById('searchDropdown');
+        
+        // Filter store names for autocomplete
+        const matchingNames = this.allStoreNames.filter(name =>
+            name.toLowerCase().includes(searchTerm)
+        ).slice(0, 10); // Limit to 10 suggestions
+        
+        if (matchingNames.length > 0) {
+            dropdown.innerHTML = matchingNames.map(name =>
+                `<div class="dropdown-item">${name}</div>`
+            ).join('');
+            
+            // Add click handlers
+            dropdown.querySelectorAll('.dropdown-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    document.getElementById('storeSearch').value = item.textContent;
+                    this.hideDropdown();
+                    this.handleStoreSearch({ target: { value: item.textContent } });
+                });
+            });
+            
+            dropdown.classList.add('show');
+        } else {
             this.hideDropdown();
         }
     }
 
-    handleSearchFocus(e) {
-        const searchTerm = e.target.value.toLowerCase().trim();
-        if (searchTerm && this.allStoreNames.length > 0) {
-            this.handleStoreSearch(e);
-        }
+    updateDropdownSelection(items) {
+        items.forEach((item, index) => {
+            item.classList.toggle('selected', index === this.selectedDropdownIndex);
+        });
+    }
+
+    hideDropdown() {
+        document.getElementById('searchDropdown').classList.remove('show');
+        this.selectedDropdownIndex = -1;
+    }
+
+    clearStoreFilter() {
+        document.getElementById('storeSearch').value = '';
+        document.getElementById('clearFilter').classList.remove('show');
+        this.filteredStores = this.allStores;
+        this.renderStores(this.allStores);
+        this.hideDropdown();
     }
 
     handleClickOutside(e) {
         const searchContainer = document.querySelector('.search-container');
-        if (!searchContainer.contains(e.target)) {
+        if (searchContainer && !searchContainer.contains(e.target)) {
             this.hideDropdown();
         }
     }
 
-    showDropdown(stores, searchTerm) {
-        const dropdown = document.getElementById('storeDropdown');
-        dropdown.innerHTML = '';
-
-        if (stores.length === 0) {
-            dropdown.innerHTML = '<div class="no-results">Không tìm thấy cửa hàng nào</div>';
-        } else {
-            stores.forEach((store, index) => {
-                const item = document.createElement('div');
-                item.className = 'dropdown-item';
-                item.dataset.storeCode = store.code;
-                
-                // Highlight matching text
-                const highlightedName = this.highlightText(store.name, searchTerm);
-                const highlightedCode = this.highlightText(store.code, searchTerm);
-                const highlightedAddress = this.highlightText(store.address || '', searchTerm);
-
-                item.innerHTML = `
-                    <h4>${highlightedName}</h4>
-                    <p><span class="store-code">${highlightedCode}</span></p>
-                    <p>${highlightedAddress}</p>
-                `;
-
-                item.addEventListener('click', () => this.selectStoreFromDropdown(item));
-                dropdown.appendChild(item);
-            });
-        }
-
-        dropdown.classList.add('show');
-    }
-
-    hideDropdown() {
-        const dropdown = document.getElementById('storeDropdown');
-        dropdown.classList.remove('show');
-        this.selectedDropdownIndex = -1;
-    }
-
-    highlightDropdownItem(items) {
-        items.forEach((item, index) => {
-            if (index === this.selectedDropdownIndex) {
-                item.classList.add('highlighted');
-            } else {
-                item.classList.remove('highlighted');
-            }
-        });
-    }
-
-    selectStoreFromDropdown(item) {
-        const storeCode = item.dataset.storeCode;
-        const store = this.allStores.find(s => s['Store code (Fieldcheck)'] === storeCode);
-        
-        if (store) {
-            const searchInput = document.getElementById('storeSearch');
-            searchInput.value = store['Store name'];
-            this.hideDropdown();
-            
-            // Filter to show only this store
-            this.filteredStores = [store];
-            this.renderStores(this.filteredStores);
-            
-            // Auto-select the store if it's the only one
-            setTimeout(() => {
-                this.selectStore(store);
-            }, 300);
-        }
-    }
-
-    highlightText(text, searchTerm) {
-        if (!searchTerm || !text) return text;
-        
-        const regex = new RegExp(`(${searchTerm})`, 'gi');
-        return text.replace(regex, '<mark>$1</mark>');
-    }
-
-    clearStoreFilter() {
-        const searchInput = document.getElementById('storeSearch');
-        const clearButton = document.getElementById('clearFilter');
-        
-        searchInput.value = '';
-        clearButton.classList.remove('show');
-        this.hideDropdown();
-        this.filteredStores = this.allStores;
-        this.renderStores(this.filteredStores);
-        searchInput.focus();
-    }
-
+    // User info loading for change password
     async loadUserInfo() {
         const userId = document.getElementById('changePasswordUserIdInput').value.trim();
         
@@ -1384,59 +1258,61 @@ class App {
         this.showLoading(true);
         
         try {
-            const response = await fetch('/api/get-user-info', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId })
-            });
+            const response = await fetch(`/api/user-info/${userId}`);
             
             if (response.ok) {
                 const userInfo = await response.json();
                 
-                // Update user info display
-                document.getElementById('changePasswordUsername').textContent = userInfo.username || 'Không có tên';
-                document.getElementById('changePasswordUserId').textContent = `ID: ${userInfo.id || 'N/A'}`;
-                document.getElementById('changePasswordRole').textContent = userInfo.role || 'N/A';
+                // Update UI with user info
+                document.getElementById('changePasswordUsername').textContent = userInfo.username;
+                document.getElementById('changePasswordUserId').textContent = `ID: ${userInfo.id}`;
+                document.getElementById('changePasswordRole').textContent = userInfo.role;
                 
-                // Set role color based on role type
-                const roleElement = document.getElementById('changePasswordRole');
-                if (userInfo.role === 'Admin') {
-                    roleElement.style.background = 'linear-gradient(135deg, #ff6b6b, #ee5a52)';
-                } else if (userInfo.role === 'TDL') {
-                    roleElement.style.background = 'linear-gradient(135deg, #4ecdc4, #44a08d)';
-                } else if (userInfo.role === 'TDS') {
-                    roleElement.style.background = 'linear-gradient(135deg, #667eea, #764ba2)';
-                } else {
-                    roleElement.style.background = 'linear-gradient(135deg, #999, #777)';
-                }
-                
-                // Hide user ID input group and show user info card
+                // Show user info card and hide user ID input
+                document.querySelector('.user-info-card').style.display = 'block';
                 document.getElementById('userIdGroup').style.display = 'none';
-                document.querySelector('.user-info-card').style.display = 'flex';
                 
-                this.showToast('Đã tải thông tin người dùng thành công!', 'success');
-                
+                this.showToast('Thông tin người dùng đã được tải', 'success');
             } else {
                 const error = await response.json();
                 this.showToast(error.error || 'Không tìm thấy người dùng', 'error');
             }
-            
         } catch (error) {
-            console.error('Load user info error:', error);
+            console.error('Error loading user info:', error);
             this.showToast('Lỗi kết nối', 'error');
         } finally {
             this.showLoading(false);
         }
     }
 
-    // Handle submit button click with workflow logic
-    async handleSubmitClick() {
-        if (this.currentStep === 'before') {
-            // First, proceed to after step (which will submit before photos)
-            await this.proceedToAfterStep();
-        } else if (this.currentStep === 'after') {
-            // Submit after photos and complete the workflow
-            await this.handleSubmit('after');
+    // Admin functions
+    async handleExport() {
+        this.showLoading(true, 'Đang xuất dữ liệu...');
+        
+        try {
+            const response = await fetch('/api/export');
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `store-inspection-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                this.showToast('Xuất dữ liệu thành công!', 'success');
+            } else {
+                const error = await response.json();
+                this.showToast(error.error || 'Lỗi xuất dữ liệu', 'error');
+            }
+        } catch (error) {
+            console.error('Export error:', error);
+            this.showToast('Lỗi kết nối', 'error');
+        } finally {
+            this.showLoading(false);
         }
     }
 }
