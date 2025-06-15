@@ -15,11 +15,134 @@ class App {
         this.beforeCategories = []; // Categories that have "before" submissions
         this.selectedAfterCategories = []; // Categories selected for "after" photos
         
+        // Session persistence properties
+        this.sessionStorageKey = 'storeInspectionSession';
+        this.autoSaveInterval = null;
+        this.lastSaveTime = null;
+        
         this.init();
+    }
+
+    // Session Persistence Methods
+    setupSessionPersistence() {
+        // Restore session on page load
+        this.restoreSession();
+        
+        // Auto-save every 30 seconds
+        this.autoSaveInterval = setInterval(() => {
+            this.saveSession();
+        }, 30000);
+        
+        // Save on page visibility change (when user switches tabs)
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') {
+                this.saveSession();
+            }
+        });
+        
+        // Save before page unload
+        window.addEventListener('beforeunload', () => {
+            this.saveSession();
+        });
+        
+        // Save on network status change
+        window.addEventListener('online', () => {
+            this.restoreSession();
+        });
+        
+        window.addEventListener('offline', () => {
+            this.saveSession();
+        });
+    }
+    
+    saveSession() {
+        try {
+            const sessionData = {
+                currentUser: this.currentUser,
+                currentStore: this.currentStore,
+                currentStep: this.currentStep,
+                sessionId: this.sessionId,
+                beforeCategories: this.beforeCategories,
+                selectedAfterCategories: this.selectedAfterCategories,
+                categoryData: this.categoryData,
+                timestamp: Date.now()
+            };
+            
+            localStorage.setItem(this.sessionStorageKey, JSON.stringify(sessionData));
+            this.lastSaveTime = Date.now();
+            
+            console.log('📱 Session saved to localStorage');
+        } catch (error) {
+            console.error('Error saving session:', error);
+        }
+    }
+    
+    restoreSession() {
+        try {
+            const savedData = localStorage.getItem(this.sessionStorageKey);
+            if (!savedData) return false;
+            
+            const sessionData = JSON.parse(savedData);
+            
+            // Check if session is not too old (24 hours)
+            const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+            if (Date.now() - sessionData.timestamp > maxAge) {
+                this.clearSession();
+                return false;
+            }
+            
+            // Restore session data
+            this.currentUser = sessionData.currentUser;
+            this.currentStore = sessionData.currentStore;
+            this.currentStep = sessionData.currentStep || 'before';
+            this.sessionId = sessionData.sessionId;
+            this.beforeCategories = sessionData.beforeCategories || [];
+            this.selectedAfterCategories = sessionData.selectedAfterCategories || [];
+            this.categoryData = sessionData.categoryData || {};
+            
+            console.log('📱 Session restored from localStorage');
+            
+            // If we have a current store and category data, restore the UI
+            if (this.currentStore && Object.keys(this.categoryData).length > 0) {
+                this.showToast('Phiên làm việc đã được khôi phục', 'success');
+                
+                // Restore appropriate screen based on current step
+                if (this.currentStep === 'after' && this.beforeCategories.length > 0) {
+                    this.renderAfterCategorySelection();
+                    this.showScreen('categoryScreen');
+                } else if (this.currentStep === 'before' || this.currentStep === 'after') {
+                    this.renderCategories();
+                    this.showScreen('categoryScreen');
+                }
+                
+                // Update store name display
+                const stepText = this.currentStep === 'before' ?
+                    'Bước 1: Chụp ảnh TRƯỚC cải thiện' :
+                    'Bước 2: Chụp ảnh SAU cải thiện';
+                document.getElementById('selectedStoreName').textContent =
+                    `${this.currentStore['Store name']} - ${stepText}`;
+            }
+            
+            return true;
+        } catch (error) {
+            console.error('Error restoring session:', error);
+            this.clearSession();
+            return false;
+        }
+    }
+    
+    clearSession() {
+        try {
+            localStorage.removeItem(this.sessionStorageKey);
+            console.log('📱 Session cleared from localStorage');
+        } catch (error) {
+            console.error('Error clearing session:', error);
+        }
     }
 
     init() {
         this.bindEvents();
+        this.setupSessionPersistence();
         this.checkAuthStatus();
     }    bindEvents() {
         // Login
@@ -563,18 +686,29 @@ class App {
                 <span class="image-count">${imageCount}/8</span>
             </div>
             
-            <div class="image-upload-area" onclick="app.triggerImageUpload('${category.ID}')">
-                <i class="fas fa-camera"></i>
-                <p>Chạm để chụp ảnh</p>
-                <small>Tối đa 8 ảnh</small>
+            <div class="image-upload-area">
+                <div class="upload-options">
+                    <button class="upload-btn camera-btn" onclick="app.triggerCameraCapture('${category.ID}')">
+                        <i class="fas fa-camera"></i>
+                        <span>Chụp ảnh</span>
+                    </button>
+                    <button class="upload-btn file-btn" onclick="app.triggerFileUpload('${category.ID}')">
+                        <i class="fas fa-upload"></i>
+                        <span>Tải ảnh lên</span>
+                    </button>
+                </div>
+                <small>Tối đa 8 ảnh mỗi danh mục</small>
             </div>
             
-            <input type="file" id="fileInput-${category.ID}" class="hidden-file-input" 
-                   accept="image/*" multiple capture="environment" 
+            <input type="file" id="cameraInput-${category.ID}" class="hidden-file-input"
+                   accept="image/*" multiple capture="environment"
+                   onchange="app.handleImageUpload('${category.ID}', this)">
+            <input type="file" id="fileInput-${category.ID}" class="hidden-file-input"
+                   accept="image/*" multiple
                    onchange="app.handleImageUpload('${category.ID}', this)">
             
             <div class="image-preview" id="imagePreview-${category.ID}">
-                ${this.getImagePreviewHTML(data.images)}
+                ${this.getImagePreviewHTML(data.images, category.ID)}
             </div>
             
             <textarea class="note-input" 
@@ -584,13 +718,19 @@ class App {
         `;
     }
 
-    getImagePreviewHTML(images) {
+    getImagePreviewHTML(images, categoryId) {
         return images.map((image, index) => `
             <div class="image-preview-item">
-                <img src="${image}" alt="Preview">
-                <button class="image-remove" onclick="app.removeImage('${this.currentCategoryId}', ${index})">
-                    <i class="fas fa-times"></i>
-                </button>
+                <img src="${image}" alt="Preview ${index + 1}">
+                <div class="image-actions">
+                    <button class="image-retake" onclick="app.retakeImage('${categoryId}', ${index})" title="Chụp lại ảnh này">
+                        <i class="fas fa-camera"></i>
+                    </button>
+                    <button class="image-remove" onclick="app.removeImage('${categoryId}', ${index})" title="Xóa ảnh này">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <span class="image-number">${index + 1}</span>
             </div>
         `).join('');
     }
@@ -602,7 +742,136 @@ class App {
             return;
         }
         document.getElementById(`fileInput-${categoryId}`).click();
-    }    async handleImageUpload(categoryId, input) {
+    }
+
+    triggerCameraCapture(categoryId) {
+        const data = this.categoryData[categoryId];
+        if (data.images.length >= 8) {
+            this.showToast('Tối đa 8 ảnh cho mỗi danh mục', 'error');
+            return;
+        }
+        document.getElementById(`cameraInput-${categoryId}`).click();
+    }
+    
+    triggerFileUpload(categoryId) {
+        const data = this.categoryData[categoryId];
+        if (data.images.length >= 8) {
+            this.showToast('Tối đa 8 ảnh cho mỗi danh mục', 'error');
+            return;
+        }
+        document.getElementById(`fileInput-${categoryId}`).click();
+    }
+    
+    retakeImage(categoryId, imageIndex) {
+        // Store the index for replacement
+        this.retakeIndex = imageIndex;
+        this.retakeCategoryId = categoryId;
+        
+        // Show options for retaking
+        const options = [
+            { text: 'Chụp ảnh mới', action: () => this.retakeWithCamera(categoryId, imageIndex) },
+            { text: 'Chọn từ thiết bị', action: () => this.retakeWithFile(categoryId, imageIndex) }
+        ];
+        
+        this.showRetakeOptions(options);
+    }
+    
+    showRetakeOptions(options) {
+        // Create a simple modal for retake options
+        const modal = document.createElement('div');
+        modal.className = 'retake-modal';
+        modal.innerHTML = `
+            <div class="retake-modal-content">
+                <h3>Chụp lại ảnh</h3>
+                <div class="retake-options">
+                    ${options.map((option, index) => `
+                        <button class="retake-option-btn" data-index="${index}">
+                            ${option.text}
+                        </button>
+                    `).join('')}
+                </div>
+                <button class="retake-cancel-btn">Hủy</button>
+            </div>
+        `;
+        
+        // Add event listeners
+        modal.addEventListener('click', (e) => {
+            if (e.target.classList.contains('retake-option-btn')) {
+                const index = parseInt(e.target.dataset.index);
+                options[index].action();
+                document.body.removeChild(modal);
+            } else if (e.target.classList.contains('retake-cancel-btn') || e.target === modal) {
+                document.body.removeChild(modal);
+            }
+        });
+        
+        document.body.appendChild(modal);
+    }
+    
+    retakeWithCamera(categoryId, imageIndex) {
+        // Create a temporary input for camera capture
+        const tempInput = document.createElement('input');
+        tempInput.type = 'file';
+        tempInput.accept = 'image/*';
+        tempInput.capture = 'environment';
+        tempInput.onchange = (e) => {
+            this.handleImageRetake(categoryId, imageIndex, e.target);
+        };
+        tempInput.click();
+    }
+    
+    retakeWithFile(categoryId, imageIndex) {
+        // Create a temporary input for file selection
+        const tempInput = document.createElement('input');
+        tempInput.type = 'file';
+        tempInput.accept = 'image/*';
+        tempInput.onchange = (e) => {
+            this.handleImageRetake(categoryId, imageIndex, e.target);
+        };
+        tempInput.click();
+    }
+    
+    async handleImageRetake(categoryId, imageIndex, input) {
+        const files = Array.from(input.files);
+        if (files.length === 0) return;
+        
+        const file = files[0]; // Only take the first file for retake
+        
+        // Validate file type
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+            this.showToast('Chỉ hỗ trợ định dạng ảnh: JPG, PNG, WEBP', 'error');
+            return;
+        }
+        
+        // Check file size (max 10MB)
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+            this.showToast('Kích thước ảnh không được vượt quá 10MB', 'error');
+            return;
+        }
+        
+        this.showLoading(true, 'Đang xử lý ảnh mới...');
+        
+        try {
+            const compressedDataUrl = await this.compressImage(file);
+            
+            // Replace the image at the specified index
+            const data = this.categoryData[categoryId];
+            data.images[imageIndex] = compressedDataUrl;
+            
+            this.updateCategoryDisplay(categoryId);
+            this.saveSession(); // Save session after retaking photo
+            this.showToast('Đã thay thế ảnh thành công', 'success');
+        } catch (error) {
+            console.error('Error retaking image:', error);
+            this.showToast('Lỗi xử lý ảnh', 'error');
+        } finally {
+            this.showLoading(false);
+        }
+    }
+
+    async handleImageUpload(categoryId, input) {
         const files = Array.from(input.files);
         const data = this.categoryData[categoryId];
         
@@ -654,11 +923,12 @@ class App {
             
             // Show compression summary
             const totalSavings = ((totalOriginalSize - totalCompressedSize) / totalOriginalSize * 100).toFixed(1);
-            const message = files.length === 1 ? 
+            const message = files.length === 1 ?
                 `Đã thêm 1 ảnh (tiết kiệm ${totalSavings}% dung lượng)` :
                 `Đã thêm ${files.length} ảnh (tiết kiệm ${totalSavings}% dung lượng)`;
                 
             this.showToast(message, 'success');
+            this.saveSession(); // Save session after adding photos
         } catch (error) {
             console.error('Error processing images:', error);
             this.showToast('Lỗi xử lý ảnh', 'error');

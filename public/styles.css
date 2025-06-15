@@ -1068,3 +1068,432 @@ mark {
         padding: 4px 10px;
     }
 }
+
+/* =======================================
+   ENHANCED PHOTO MANAGEMENT STYLES
+   ======================================= */
+
+/* Retake Modal Styles */
+.retake-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    backdrop-filter: blur(5px);
+}
+
+.retake-modal-content {
+    background: white;
+    padding: 30px;
+    border-radius: 15px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    max-width: 350px;
+    width: 90%;
+    text-align: center;
+    animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.retake-modal-content h3 {
+    margin: 0 0 20px 0;
+    color: #333;
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.retake-options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.retake-option-btn {
+    padding: 15px 20px;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.retake-option-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.retake-option-btn i {
+    font-size: 16px;
+}
+
+.retake-cancel-btn {
+    padding: 12px 20px;
+    border: 2px solid #ddd;
+    border-radius: 10px;
+    background: white;
+    color: #666;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.retake-cancel-btn:hover {
+    background: #f5f5f5;
+    border-color: #bbb;
+}
+
+/* Enhanced Image Upload Area */
+.image-upload-area {
+    border: 2px dashed #ddd;
+    border-radius: 12px;
+    padding: 25px 20px;
+    text-align: center;
+    background: #fafafa;
+    transition: all 0.3s ease;
+    margin-bottom: 15px;
+    position: relative;
+}
+
+.image-upload-area:hover {
+    border-color: #667eea;
+    background: #f8f9ff;
+}
+
+.upload-options {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.upload-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 18px 22px;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 90px;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+}
+
+.upload-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+}
+
+.upload-btn i {
+    font-size: 20px;
+}
+
+.camera-btn {
+    background: linear-gradient(135deg, #4ecdc4, #44a08d);
+}
+
+.camera-btn:hover {
+    box-shadow: 0 8px 25px rgba(78, 205, 196, 0.4);
+}
+
+.file-btn {
+    background: linear-gradient(135deg, #f093fb, #f5576c);
+}
+
+.file-btn:hover {
+    box-shadow: 0 8px 25px rgba(240, 147, 251, 0.4);
+}
+
+/* Enhanced Image Preview */
+.image-preview-item {
+    position: relative;
+    display: inline-block;
+    margin: 6px;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+    background: white;
+}
+
+.image-preview-item:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+.image-preview-item img {
+    width: 90px;
+    height: 90px;
+    object-fit: cover;
+    display: block;
+}
+
+.image-actions {
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 6px;
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.6));
+    border-radius: 0 10px 0 10px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.image-preview-item:hover .image-actions {
+    opacity: 1;
+}
+
+.image-retake,
+.image-remove {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    font-weight: 600;
+}
+
+.image-retake {
+    background: linear-gradient(135deg, #4ecdc4, #44a08d);
+}
+
+.image-retake:hover {
+    background: linear-gradient(135deg, #44a08d, #4ecdc4);
+    transform: scale(1.1);
+}
+
+.image-remove {
+    background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+}
+
+.image-remove:hover {
+    background: linear-gradient(135deg, #ee5a24, #ff6b6b);
+    transform: scale(1.1);
+}
+
+.image-number {
+    position: absolute;
+    bottom: 4px;
+    left: 4px;
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.6));
+    color: white;
+    font-size: 11px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    font-weight: bold;
+    min-width: 20px;
+    text-align: center;
+}
+
+/* Session Status Indicator */
+.session-status {
+    position: fixed;
+    top: 15px;
+    right: 15px;
+    background: rgba(0, 0, 0, 0.85);
+    color: white;
+    padding: 8px 15px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    z-index: 100;
+    opacity: 0;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.session-status.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.session-status.saving {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.9), rgba(118, 75, 162, 0.9));
+    border-color: rgba(102, 126, 234, 0.3);
+}
+
+.session-status.saved {
+    background: linear-gradient(135deg, rgba(78, 205, 196, 0.9), rgba(68, 160, 141, 0.9));
+    border-color: rgba(78, 205, 196, 0.3);
+}
+
+.session-status.error {
+    background: linear-gradient(135deg, rgba(255, 107, 107, 0.9), rgba(238, 90, 36, 0.9));
+    border-color: rgba(255, 107, 107, 0.3);
+}
+
+.session-status i {
+    margin-right: 6px;
+}
+
+/* Upload Instructions */
+.upload-instructions {
+    color: #666;
+    font-size: 13px;
+    margin-top: 10px;
+    line-height: 1.4;
+}
+
+.upload-instructions i {
+    color: #667eea;
+    margin-right: 5px;
+}
+
+/* Mobile Responsive Improvements */
+@media (max-width: 768px) {
+    .upload-options {
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .upload-btn {
+        width: 100%;
+        max-width: 220px;
+        flex-direction: row;
+        justify-content: center;
+        padding: 15px 20px;
+    }
+    
+    .upload-btn i {
+        margin-right: 8px;
+        margin-bottom: 0;
+        font-size: 18px;
+    }
+    
+    .retake-modal-content {
+        margin: 20px;
+        max-width: none;
+        padding: 25px;
+    }
+    
+    .image-preview-item {
+        margin: 4px;
+    }
+    
+    .image-preview-item img {
+        width: 75px;
+        height: 75px;
+    }
+    
+    .image-actions {
+        padding: 4px;
+    }
+    
+    .image-retake,
+    .image-remove {
+        width: 24px;
+        height: 24px;
+        font-size: 10px;
+    }
+    
+    .session-status {
+        top: 10px;
+        right: 10px;
+        font-size: 11px;
+        padding: 6px 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    .image-upload-area {
+        padding: 20px 15px;
+    }
+    
+    .upload-btn {
+        max-width: 180px;
+        padding: 12px 16px;
+        font-size: 11px;
+    }
+    
+    .retake-modal-content {
+        padding: 20px;
+    }
+    
+    .retake-modal-content h3 {
+        font-size: 1.1rem;
+    }
+    
+    .retake-option-btn {
+        padding: 12px 16px;
+        font-size: 13px;
+    }
+}
+
+/* Enhanced existing image preview styles */
+.image-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 15px;
+    justify-content: flex-start;
+}
+
+/* Override existing image-remove styles for consistency */
+.image-preview .image-remove {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    font-size: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    opacity: 0;
+}
+
+.image-preview-item:hover .image-remove {
+    opacity: 1;
+}
+
+.image-preview .image-remove:hover {
+    background: linear-gradient(135deg, #ee5a24, #ff6b6b);
+    transform: scale(1.1);
+}
