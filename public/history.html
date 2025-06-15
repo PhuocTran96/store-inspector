@@ -336,34 +336,40 @@
 
     <script>
         let currentPage = 1;
-        let totalPages = 1;
-
-        async function loadHistory(page = 1) {
+        let totalPages = 1;        async function loadHistory(page = 1) {
             try {
                 showLoading(true);
+                console.log('📋 Loading history for page:', page);
                 const response = await fetch(`/api/user/history?page=${page}&limit=10`);
+                
+                console.log('📡 Response status:', response.status);
                 
                 if (!response.ok) {
                     if (response.status === 401) {
+                        console.log('🔒 User not authenticated, redirecting...');
                         window.location.href = '/';
                         return;
                     }
+                    console.error('❌ Response not ok:', response.status, response.statusText);
                     throw new Error('Failed to load history');
                 }
 
                 const data = await response.json();
+                console.log('📊 History data received:', data);
+                
                 renderHistory(data.history);
                 renderPagination(data.pagination);
                 
+                console.log('✅ History loaded successfully');
+                
             } catch (error) {
-                console.error('Error loading history:', error);
+                console.error('❌ Error loading history:', error);
                 showToast('Không thể tải lịch sử', 'error');
             } finally {
                 showLoading(false);
             }
-        }
-
-        function renderHistory(historyData) {
+        }        function renderHistory(historyData) {
+            console.log('🎨 Rendering history with', historyData.length, 'sessions');
             const container = document.getElementById('historyContent');
             
             if (historyData.length === 0) {
@@ -376,6 +382,8 @@
                 `;
                 return;
             }
+
+            try {
 
             container.innerHTML = historyData.map(session => {
                 const hasAfter = session.after.length > 0;
@@ -456,18 +464,23 @@
                                 ${categoriesHtml}
                             </div>
                         </div>
-                    </div>
-                `;
+                    </div>                `;
             }).join('');
-        }
-
-        function renderPagination(pagination) {
+            
+            console.log('✅ History rendered successfully');
+            } catch (error) {
+                console.error('❌ Error rendering history:', error);
+                container.innerHTML = '<div class="error-message">Có lỗi xảy ra khi hiển thị lịch sử</div>';
+            }
+        }        function renderPagination(pagination) {
+            console.log('📄 Rendering pagination:', pagination);
             const container = document.getElementById('pagination');
             currentPage = pagination.currentPage;
             totalPages = pagination.totalPages;
 
             if (totalPages <= 1) {
                 container.innerHTML = '';
+                console.log('📄 No pagination needed (totalPages <= 1)');
                 return;
             }
 

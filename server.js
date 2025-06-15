@@ -1330,11 +1330,21 @@ app.get('/api/user/history', async (req, res) => {
       }
       if (sub.submissionType === 'before') sessionMap[key].before.push(sub);
       if (sub.submissionType === 'after') sessionMap[key].after.push(sub);
-    }
-    // Convert to array and paginate
+    }    // Convert to array and paginate
     const sessions = Object.values(sessionMap).sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
     const paged = sessions.slice(skip, skip + limit);
-    res.json({ history: paged, total: sessions.length, page, limit });
+    
+    // Format response to match client expectations
+    const totalPages = Math.ceil(sessions.length / limit);
+    res.json({ 
+      history: paged, 
+      pagination: {
+        currentPage: page,
+        totalPages: totalPages,
+        total: sessions.length,
+        limit: limit
+      }
+    });
   } catch (error) {
     console.error('❌ Error loading user history:', error);
     res.status(500).json({ error: 'Failed to load user history' });
