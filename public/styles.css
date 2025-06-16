@@ -509,7 +509,7 @@ body {
     pointer-events: none;
 }
 
-.store-dropdown {
+.search-dropdown {
     position: absolute;
     top: 100%;
     left: 0;
@@ -524,7 +524,7 @@ body {
     margin-top: 5px;
 }
 
-.store-dropdown.show {
+.search-dropdown.show {
     display: block;
 }
 
@@ -624,21 +624,21 @@ mark {
 }
 
 /* Custom scrollbar for dropdown */
-.store-dropdown::-webkit-scrollbar {
+.search-dropdown::-webkit-scrollbar {
     width: 6px;
 }
 
-.store-dropdown::-webkit-scrollbar-track {
+.search-dropdown::-webkit-scrollbar-track {
     background: #f1f1f1;
     border-radius: 3px;
 }
 
-.store-dropdown::-webkit-scrollbar-thumb {
+.search-dropdown::-webkit-scrollbar-thumb {
     background: #c1c1c1;
     border-radius: 3px;
 }
 
-.store-dropdown::-webkit-scrollbar-thumb:hover {
+.search-dropdown::-webkit-scrollbar-thumb:hover {
     background: #a8a8a8;
 }
 
