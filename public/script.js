@@ -829,23 +829,18 @@ class App {
                    onchange="app.handleImageUpload('${category.ID}', this)">
             <input type="file" id="fileInput-${category.ID}" class="hidden-file-input"
                    accept="image/*" multiple
-                   onchange="app.handleImageUpload('${category.ID}', this)">
-              <div class="image-preview" id="imagePreview-${category.ID}">
+                   onchange="app.handleImageUpload('${category.ID}', this)">            <div class="image-preview" id="imagePreview-${category.ID}">
                 ${this.getImagePreviewHTML(data.images, category.ID)}
             </div>
             
             <div class="category-footer">
-                <div class="footer-left">
-                    <div class="note-section">
-                        <label class="note-label">Ghi chú:</label>
-                        <textarea class="note-input" 
-                                  placeholder="Nhập ghi chú cho danh mục này..." 
-                                  value="${data.note}"
-                                  oninput="app.updateNote('${category.ID}', this.value)"></textarea>
-                    </div>
-                </div>
-                <div class="footer-right">
-                    ${fixedQuestionHTML}
+                ${fixedQuestionHTML}
+                <div class="note-section">
+                    <label class="note-label">Ghi chú:</label>
+                    <textarea class="note-input" 
+                              placeholder="Nhập ghi chú cho danh mục này..." 
+                              value="${data.note}"
+                              oninput="app.updateNote('${category.ID}', this.value)"></textarea>
                 </div>
             </div>
         `;
@@ -929,9 +924,7 @@ class App {
             
             img.src = URL.createObjectURL(file);
         });
-    }
-
-    renderCategoryImages(categoryId) {
+    }    renderCategoryImages(categoryId) {
         const previewContainer = document.getElementById(`imagePreview-${categoryId}`);
         const data = this.categoryData[categoryId];
         previewContainer.innerHTML = this.getImagePreviewHTML(data.images, categoryId);
@@ -939,7 +932,24 @@ class App {
         // Update image count
         const countElement = previewContainer.parentElement.querySelector('.image-count');
         countElement.textContent = `${data.images.length}/8`;
-    }    removeImage(categoryId, index) {
+        
+        // If we're in step 2 (after) and this category now has images, 
+        // we need to re-render the entire category to show/update the yes/no question
+        if (this.currentStep === 'after' && data.afterImages && data.afterImages.length > 0) {
+            // Find the category in the categories array
+            const category = this.categories.find(cat => cat.ID === categoryId);
+            if (category) {
+                // Find the category item element and update its HTML
+                const categoryItems = document.querySelectorAll('.category-item');
+                categoryItems.forEach(item => {
+                    const categoryHeader = item.querySelector('.category-header h3');
+                    if (categoryHeader && categoryHeader.textContent === category.Category) {
+                        item.innerHTML = this.getCategoryHTML(category);
+                    }
+                });
+            }
+        }
+    }removeImage(categoryId, index) {
         const data = this.categoryData[categoryId];
         
         // Remove from the correct array based on current step
@@ -987,13 +997,12 @@ class App {
         data.note = note;
         
         this.saveSession(); // Save after updating note
-    }
-
-    updateFixed(categoryId, isFixed) {
+    }    updateFixed(categoryId, isFixed) {
         const data = this.categoryData[categoryId];
         data.afterFixed = isFixed;
+        this.updateSubmitButton(); // Update submit button after changing fixed status
         this.saveSession(); // Save after updating fixed status
-    }    // Submit handling
+    }// Submit handling
     updateSubmitButton() {
         const submitBtn = document.getElementById('submitBtn');
         const proceedBtn = document.getElementById('proceedToAfterBtn');

@@ -1270,9 +1270,9 @@
                     showToast('Vui lòng chọn file trước', 'error');
                     return;
                 }
-                
-                const formData = new FormData();
-                formData.append('file', file);
+                  const formData = new FormData();
+                const fieldName = type === 'stores' ? 'storesFile' : 'categoriesFile';
+                formData.append(fieldName, file);
                 
                 // Show progress
                 uploadProgress.style.display = 'block';

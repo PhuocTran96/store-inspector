@@ -1596,7 +1596,8 @@ mark {
 /* Category Footer Layout */
 .category-footer {
     display: flex;
-    gap: 20px;
+    flex-direction: column;
+    gap: 15px;
     margin-top: 15px;
 }
 
@@ -1648,7 +1649,7 @@ mark {
     font-style: italic;
 }
 
-/* Mobile responsiveness for two-column layout */
+/* Mobile responsiveness for column layout */
 @media (max-width: 600px) {
     .category-footer {
         flex-direction: column;

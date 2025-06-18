@@ -1544,7 +1544,7 @@ app.get('/api/admin/export', requireAdmin, async (req, res) => {
           fixedStatus = 'Chưa trả lời';
         }
       } else {
-        fixedStatus = 'N/A (Before step)';
+        fixedStatus = '0';
       }
       
       worksheet.addRow({
@@ -1596,10 +1596,10 @@ app.get('/api/admin/export-pptx', requireAdmin, async (req, res) => {
         filter.submittedAt.$lte = endDateTime;
       }
     }
-    
-    console.log('Export PPTX filter:', filter);
+      console.log('Export PPTX filter:', filter);
     const submissions = await Submission.find(filter).sort({ submittedAt: -1 }).lean();
     console.log(`Found ${submissions.length} submissions for PPTX export`);
+    
     // Group by sessionId + storeId + categoryId
     const sessionMap = {};
     for (const sub of submissions) {
@@ -1609,9 +1609,44 @@ app.get('/api/admin/export-pptx', requireAdmin, async (req, res) => {
       }
       if (sub.submissionType === 'before') sessionMap[key].before.push(sub);
       if (sub.submissionType === 'after') sessionMap[key].after.push(sub);
-    }
+    }    // Group sessions by store for creating store info slides
+    const storeMap = {};
+    const storeIds = [...new Set(Object.values(sessionMap).map(session => session.meta.storeId))];
+    
+    // Fetch full store information for all unique stores
+    // Note: storeId in submissions is actually the store code, not MongoDB _id
+    const stores = await Store.find({ 
+      $or: [
+        { storeCode: { $in: storeIds } },
+        { 'Store code (Fieldcheck)': { $in: storeIds } },
+        { STT: { $in: storeIds } }
+      ]
+    }).lean();
+    
+    const storeInfoMap = {};
+    stores.forEach(store => {
+      // Map by the actual storeId value used in submissions
+      const storeKey = store.storeCode || store['Store code (Fieldcheck)'] || store.STT;
+      if (storeKey) {
+        storeInfoMap[storeKey] = store;
+      }
+    });
+
+    Object.values(sessionMap).forEach((session) => {
+      const storeKey = session.meta.storeId;
+      if (!storeMap[storeKey]) {
+        storeMap[storeKey] = {
+          storeMeta: session.meta,
+          storeInfo: storeInfoMap[storeKey] || {}, // Full store information
+          sessions: []
+        };
+      }
+      storeMap[storeKey].sessions.push(session);
+    });
+
     const pptx = new PptxGenJS();
     const placeholderPath = 'public/no-image-placeholder.svg';
+    
     pptx.defineSlideMaster({
       title: 'CLEAN_LAYOUT',
       background: { fill: 'FFFFFF' },
@@ -1620,7 +1655,108 @@ app.get('/api/admin/export-pptx', requireAdmin, async (req, res) => {
         { shape: 'line', x: 5, y: 0.6, w: 0, h: 5.5, line: { color: 'C0C0C0', width: 2 } }
       ]
     });
-    Object.values(sessionMap).forEach(({ before, after, meta }) => {
+
+    // Define store info slide master with light blue background
+    pptx.defineSlideMaster({
+      title: 'STORE_INFO_LAYOUT',
+      background: { fill: 'E6F2FF' }, // Light blue background
+      objects: []
+    });    // Create slides for each store
+    Object.values(storeMap).forEach(({ storeMeta, storeInfo, sessions }) => {
+      // Create store information slide first
+      const storeInfoSlide = pptx.addSlide({ masterName: 'STORE_INFO_LAYOUT' });
+        // Store information in two columns
+      const startY = 0.3; // Starting Y position
+      const rowHeight = 0.8; // Height between rows
+      
+      // First column properties
+      const col1Props = {
+        x: 0.4, // X position for left column
+        w: 4.5, // Width of text box for first column
+        h: 0.6, // Height of each text box
+        fontSize: 18,
+        bold: true,
+        color: '1F4E79', // Dark blue color for better contrast on light blue background
+        align: 'left'
+      };
+
+      // Second column properties
+      const col2Props = {
+        x: 5.2, // X position for right column
+        w: 4.5, // Width of text box for second column
+        h: 0.6, // Height of each text box
+        fontSize: 18,
+        bold: true,
+        color: '1F4E79', // Dark blue color for better contrast on light blue background
+        align: 'left'
+      };
+
+      // Count "Chưa fix" (not fixed) responses for this store
+      let unfixedCount = 0;
+      sessions.forEach(({ after }) => {
+        after.forEach(submission => {
+          if (submission.fixed === false) {
+            unfixedCount++;
+          }
+        });
+      });
+
+      // COLUMN 1 - Left side
+      // Row 1: Store Name
+      storeInfoSlide.addText(`Store: ${storeInfo.storeName || storeMeta.storeName || 'N/A'}`, {
+        ...col1Props,
+        y: startY
+      });
+
+      // Row 2: TDL Name
+      storeInfoSlide.addText(`TDL: ${storeInfo.tdlName || 'N/A'}`, {
+        ...col1Props,
+        y: startY + rowHeight
+      });
+
+      // Row 3: TDS Name
+      storeInfoSlide.addText(`TDS: ${storeInfo.tdsName || storeMeta.tdsName || 'N/A'}`, {
+        ...col1Props,
+        y: startY + (rowHeight * 2)
+      });
+
+      // Row 4: Type Shop
+      storeInfoSlide.addText(`Type: ${storeInfo.typeShop || 'N/A'}`, {
+        ...col1Props,
+        y: startY + (rowHeight * 3)
+      });
+
+      // Row 5: Province
+      storeInfoSlide.addText(`Province: ${storeInfo.province || 'N/A'}`, {
+        ...col1Props,
+        y: startY + (rowHeight * 4)
+      });
+
+      // Format date as DD-MM-YYYY for store info slide
+      const formatDateForStore = (date) => {
+        if (!date) return 'N/A';
+        const d = new Date(date);
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}-${month}-${year}`;
+      };
+
+      // Row 6: Submitted At
+      storeInfoSlide.addText(`Submitted: ${formatDateForStore(storeMeta.submittedAt)}`, {
+        ...col1Props,
+        y: startY + (rowHeight * 5)
+      });
+
+      // COLUMN 2 - Right side
+      // Row 1 of Column 2: Unfixed POSM/Shelves count
+      storeInfoSlide.addText(`Có lỗi POSM/Quầy kệ không: ${unfixedCount}`, {
+        ...col2Props,
+        y: startY
+      });
+
+      // Now create submission slides for this store
+      sessions.forEach(({ before, after, meta }) => {
       const slide = pptx.addSlide({ masterName: 'CLEAN_LAYOUT' });
       // Format date as DD-MM-YYYY
       const formatDate = (date) => {
@@ -1687,9 +1823,10 @@ app.get('/api/admin/export-pptx', requireAdmin, async (req, res) => {
           y: rightStartY + row * (imgH + gapY),
           w: imgW,
           h: imgH
-        });
-      });
-    });
+        });      });
+      }); // Close sessions.forEach
+    }); // Close Object.values(storeMap).forEach
+    
     const buf = await pptx.write('nodebuffer');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
     res.setHeader('Content-Disposition', 'attachment; filename="submissions.pptx"');
