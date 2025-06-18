@@ -753,6 +753,7 @@ class App {
                 beforeNote: '',
                 afterImages: [],
                 afterNote: '',
+                afterFixed: null, // null = not answered, true = yes, false = no
                 // Legacy support for current step
                 images: [],
                 note: ''
@@ -772,11 +773,30 @@ class App {
         });
 
         this.updateSubmitButton();
-    }
-
-    getCategoryHTML(category) {
+    }    getCategoryHTML(category) {
         const data = this.categoryData[category.ID];
         const imageCount = data.images.length;
+
+        // Fixed question HTML - only show for step 2 (after)
+        const fixedQuestionHTML = this.currentStep === 'after' ? `
+            <div class="fixed-question">
+                <label>Lỗi POSM/Quầy kệ đã được fix chưa?</label>
+                <div class="fixed-options">
+                    <label class="radio-option">
+                        <input type="radio" name="fixed-${category.ID}" value="yes" 
+                               ${data.afterFixed === true ? 'checked' : ''}
+                               onchange="app.updateFixed('${category.ID}', true)">
+                        <span>Đã fix</span>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="fixed-${category.ID}" value="no" 
+                               ${data.afterFixed === false ? 'checked' : ''}
+                               onchange="app.updateFixed('${category.ID}', false)">
+                        <span>Chưa fix</span>
+                    </label>
+                </div>
+            </div>
+        ` : '';
 
         return `
             <div class="category-header">
@@ -808,6 +828,8 @@ class App {
             <div class="image-preview" id="imagePreview-${category.ID}">
                 ${this.getImagePreviewHTML(data.images, category.ID)}
             </div>
+            
+            ${fixedQuestionHTML}
             
             <textarea class="note-input" 
                       placeholder="Ghi chú cho danh mục này..." 
@@ -954,6 +976,12 @@ class App {
         this.saveSession(); // Save after updating note
     }
 
+    updateFixed(categoryId, isFixed) {
+        const data = this.categoryData[categoryId];
+        data.afterFixed = isFixed;
+        this.saveSession(); // Save after updating fixed status
+    }
+
     // Submit handling
     updateSubmitButton() {
         const submitBtn = document.getElementById('submitBtn');
@@ -1018,7 +1046,8 @@ class App {
                     id: categoryId,
                     name: data.name,
                     images: data.afterImages,
-                    note: data.afterNote || ''
+                    note: data.afterNote || '',
+                    fixed: data.afterFixed // Include the fixed status
                 });
             }
         }
@@ -1077,12 +1106,12 @@ class App {
                 storeId: storeId,
                 storeName: this.currentStore['Store name'],
                 step: 'after',
-                sessionId: this.sessionId,
-                categories: afterCategoriesWithData.map(data => ({
+                sessionId: this.sessionId,                categories: afterCategoriesWithData.map(data => ({
                     categoryId: data.id,
                     categoryName: data.name,
                     images: data.images,
-                    note: data.note
+                    note: data.note,
+                    fixed: data.fixed // Include the fixed status in submission
                 }))
             };
 
@@ -1390,7 +1419,8 @@ class App {
                     id: categoryId,
                     name: data.name,
                     images: data.afterImages,
-                    note: data.afterNote || ''
+                    note: data.afterNote || '',
+                    fixed: data.afterFixed // Include the fixed status
                 });
             }
         }
@@ -1440,9 +1470,7 @@ class App {
             if (!beforeResponse.ok) {
                 const errorData = await beforeResponse.json();
                 throw new Error(errorData.error || 'Gửi dữ liệu bước 1 thất bại');
-            }
-
-            // Submit step 2 (after) data
+            }            // Submit step 2 (after) data
             const afterSubmissionData = {
                 userId: this.currentUser.id,
                 username: this.currentUser.username,
@@ -1454,7 +1482,8 @@ class App {
                     categoryId: data.id,
                     categoryName: data.name,
                     images: data.images,
-                    note: data.note
+                    note: data.note,
+                    fixed: data.fixed // Include the fixed status in submission
                 }))
             };
 
@@ -1467,10 +1496,14 @@ class App {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(afterSubmissionData)
-            });            if (!afterResponse.ok) {
+            });
+
+            if (!afterResponse.ok) {
                 const errorData = await afterResponse.json();
                 throw new Error(errorData.error || 'Gửi dữ liệu bước 2 thất bại');
-            }            // Both submissions successful
+            }
+
+            // Both submissions successful
             console.log('✅ Both submissions completed successfully');
             this.showToast('Gửi dữ liệu thành công! Cảm ơn bạn đã hoàn thành kiểm tra.', 'success');
             
@@ -1487,7 +1520,9 @@ class App {
             
             console.log('🔄 Starting redirect process...');
             // Hide loading overlay first
-            this.showLoading(false);            // Return to stores screen with a small delay to let UI update
+            this.showLoading(false);
+            
+            // Return to stores screen with a small delay to let UI update
             setTimeout(() => {
                 console.log('🏪 Calling showStores()...');
                 try {
@@ -1495,11 +1530,12 @@ class App {
                     console.log('✅ showStores() completed successfully');
                 } catch (error) {
                     console.error('❌ Error in showStores():', error);
-                    // Fallback: try to show the store screen directly
+                    // Fallback: try to show store screen directly
                     console.log('🔄 Fallback: showing store screen directly...');
                     this.showScreen('storeScreen');
                 }
-            }, 500);} catch (error) {
+            }, 500);
+        } catch (error) {
             console.error('Error submitting data:', error);
             this.showToast(error.message || 'Lỗi gửi dữ liệu', 'error');
             this.showLoading(false); // Hide loading on error
@@ -1690,7 +1726,43 @@ class App {
         } finally {
             this.showLoading(false);
         }
-    }}
+    }
 
-// Initialize app
+    handleBackToStores() {
+        console.log('🔙 Handling back to stores - cleaning up state');
+        
+        try {
+            // Clear current selection state
+            this.currentStore = null;
+            this.currentStep = 'before';
+            this.sessionId = null;
+            this.beforeCategories = [];
+            this.selectedAfterCategories = [];
+            this.categoryData = {};
+            
+            // Clear any saved session data
+            this.clearSession();
+            
+            console.log('🏪 Calling showStores()...');
+            this.showStores();
+        } catch (error) {
+            console.error('❌ Error in handleBackToStores():', error);
+            // Fallback: try to show store screen directly
+            console.log('🔄 Fallback: showing store screen directly...');
+            try {
+                this.showScreen('storeScreen');
+                // Also try to load stores if possible
+                if (this.allStores && this.allStores.length > 0) {
+                    this.renderStores(this.allStores);
+                }
+            } catch (fallbackError) {
+                console.error('❌ Even fallback failed:', fallbackError);
+                // Last resort: reload the page
+                location.reload();
+            }
+        }
+    }
+}
+
+// Initialize the app
 const app = new App();

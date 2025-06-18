@@ -369,6 +369,54 @@ body {
     font-size: 0.8rem;
 }
 
+/* Fixed Question Styles */
+.fixed-question {
+    margin: 15px 0;
+    padding: 15px;
+    background: rgba(102, 126, 234, 0.05);
+    border-radius: 10px;
+    border-left: 4px solid #667eea;
+}
+
+.fixed-question label {
+    display: block;
+    color: #333;
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 10px;
+}
+
+.fixed-options {
+    display: flex;
+    gap: 20px;
+}
+
+.radio-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-weight: 500 !important;
+    margin-bottom: 0 !important;
+}
+
+.radio-option input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: #667eea;
+}
+
+.radio-option span {
+    color: #333;
+    font-size: 0.9rem;
+}
+
+.radio-option:hover span {
+    color: #667eea;
+}
+
 .note-input {
     width: 100%;
     padding: 12px;
