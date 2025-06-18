@@ -5,7 +5,6 @@ const userSchema = new mongoose.Schema({
   userId: { type: String, required: true, unique: true },
   role: { type: String, required: true },
   password: { type: String, required: true },
-  tdsName: { type: String, default: '' },
   status: { type: String, enum: ['active', 'inactive'], default: 'active' },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

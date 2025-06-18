@@ -776,11 +776,16 @@ class App {
     }    getCategoryHTML(category) {
         const data = this.categoryData[category.ID];
         const imageCount = data.images.length;
+        
+        // Check if this category needs the yes/no question answered
+        const needsAnswer = this.currentStep === 'after' && 
+                           data.afterImages && data.afterImages.length > 0 && 
+                           (data.afterFixed === undefined || data.afterFixed === null);
 
         // Fixed question HTML - only show for step 2 (after)
         const fixedQuestionHTML = this.currentStep === 'after' ? `
-            <div class="fixed-question">
-                <label>Lỗi POSM/Quầy kệ đã được fix chưa?</label>
+            <div class="fixed-question ${needsAnswer ? 'needs-answer' : ''}">
+                <label>Lỗi POSM/Quầy kệ đã được fix chưa? ${needsAnswer ? '<span class="required-indicator">*</span>' : ''}</label>
                 <div class="fixed-options">
                     <label class="radio-option">
                         <input type="radio" name="fixed-${category.ID}" value="yes" 
@@ -795,6 +800,7 @@ class App {
                         <span>Chưa fix</span>
                     </label>
                 </div>
+                ${needsAnswer ? '<div class="warning-text">⚠️ Vui lòng trả lời câu hỏi này để có thể gửi kết quả</div>' : ''}
             </div>
         ` : '';
 
@@ -824,17 +830,24 @@ class App {
             <input type="file" id="fileInput-${category.ID}" class="hidden-file-input"
                    accept="image/*" multiple
                    onchange="app.handleImageUpload('${category.ID}', this)">
-            
-            <div class="image-preview" id="imagePreview-${category.ID}">
+              <div class="image-preview" id="imagePreview-${category.ID}">
                 ${this.getImagePreviewHTML(data.images, category.ID)}
             </div>
             
-            ${fixedQuestionHTML}
-            
-            <textarea class="note-input" 
-                      placeholder="Ghi chú cho danh mục này..." 
-                      value="${data.note}"
-                      oninput="app.updateNote('${category.ID}', this.value)"></textarea>
+            <div class="category-footer">
+                <div class="footer-left">
+                    <div class="note-section">
+                        <label class="note-label">Ghi chú:</label>
+                        <textarea class="note-input" 
+                                  placeholder="Nhập ghi chú cho danh mục này..." 
+                                  value="${data.note}"
+                                  oninput="app.updateNote('${category.ID}', this.value)"></textarea>
+                    </div>
+                </div>
+                <div class="footer-right">
+                    ${fixedQuestionHTML}
+                </div>
+            </div>
         `;
     }
 
@@ -980,9 +993,7 @@ class App {
         const data = this.categoryData[categoryId];
         data.afterFixed = isFixed;
         this.saveSession(); // Save after updating fixed status
-    }
-
-    // Submit handling
+    }    // Submit handling
     updateSubmitButton() {
         const submitBtn = document.getElementById('submitBtn');
         const proceedBtn = document.getElementById('proceedToAfterBtn');
@@ -998,21 +1009,57 @@ class App {
                 submitBtn.style.display = 'none';
             }
         } else if (this.currentStep === 'after') {
-            // Show submit button for "after" step
+            // Check if all selected after categories have answered the yes/no question
+            const hasImagesAfter = Object.values(this.categoryData).some(data => data.afterImages && data.afterImages.length > 0);
+            let allQuestionsAnswered = true;
+            
+            // Validate that all selected after categories with images have answered the question
+            for (const categoryId of this.selectedAfterCategories) {
+                const data = this.categoryData[categoryId];
+                if (data && data.afterImages && data.afterImages.length > 0) {
+                    // Check if the yes/no question has been answered
+                    if (data.afterFixed === undefined || data.afterFixed === null) {
+                        allQuestionsAnswered = false;
+                        break;
+                    }
+                }
+            }
+              // Show submit button if has images, but disable if questions aren't answered
             if (submitBtn) {
-                submitBtn.style.display = hasImages ? 'block' : 'none';
+                if (hasImagesAfter) {
+                    submitBtn.style.display = 'block';
+                    
+                    // Update button text and style based on validation
+                    if (!allQuestionsAnswered) {
+                        submitBtn.textContent = 'Vui lòng trả lời tất cả câu hỏi "Đã sửa chưa?"';
+                        submitBtn.style.backgroundColor = '#dc3545';
+                        submitBtn.style.cursor = 'not-allowed';
+                        submitBtn.disabled = true;
+                    } else {
+                        submitBtn.textContent = 'Gửi kết quả';
+                        submitBtn.style.backgroundColor = '#28a745';
+                        submitBtn.style.cursor = 'pointer';
+                        submitBtn.disabled = false;
+                    }
+                } else {
+                    submitBtn.style.display = 'none';
+                }
             }
             if (proceedBtn) {
                 proceedBtn.style.display = 'none';
             }
         }
-    }
-
-    async handleSubmitClick() {
+    }    async handleSubmitClick() {
+        // Double-check validation before submitting
         if (this.currentStep === 'after') {
+            const submitBtn = document.getElementById('submitBtn');
+            if (submitBtn && submitBtn.disabled) {
+                this.showToast('Vui lòng trả lời tất cả câu hỏi "Đã sửa chưa?" trước khi gửi', 'error');
+                return;
+            }
             await this.handleSubmit('after');
         }
-    }    async handleSubmit(step) {
+    }async handleSubmit(step) {
         if (step === 'after') {
             // For step 2 (after), submit both before and after data
             await this.submitBothSteps();
@@ -1021,6 +1068,22 @@ class App {
             this.showToast('Vui lòng hoàn thành bước 2 để gửi dữ liệu', 'error');
         }
     }    async submitBothSteps() {
+        // First, validate that all selected after categories with images have answered the yes/no question
+        const unansweredCategories = [];
+        for (const categoryId of this.selectedAfterCategories) {
+            const data = this.categoryData[categoryId];
+            if (data && data.afterImages && data.afterImages.length > 0) {
+                if (data.afterFixed === undefined || data.afterFixed === null) {
+                    unansweredCategories.push(data.name || categoryId);
+                }
+            }
+        }
+        
+        if (unansweredCategories.length > 0) {
+            this.showToast(`Vui lòng trả lời câu hỏi "Đã sửa chưa?" cho các danh mục: ${unansweredCategories.join(', ')}`, 'error');
+            return;
+        }
+        
         // Get step 1 (before) data - categories that have before images
         const beforeCategoriesWithData = [];
         
@@ -1106,7 +1169,8 @@ class App {
                 storeId: storeId,
                 storeName: this.currentStore['Store name'],
                 step: 'after',
-                sessionId: this.sessionId,                categories: afterCategoriesWithData.map(data => ({
+                sessionId: this.sessionId,
+                categories: afterCategoriesWithData.map(data => ({
                     categoryId: data.id,
                     categoryName: data.name,
                     images: data.images,
@@ -1152,7 +1216,7 @@ class App {
                     console.log('✅ showStores() completed successfully');
                 } catch (error) {
                     console.error('❌ Error in showStores():', error);
-                    // Fallback: try to show the store screen directly
+                    // Fallback: try to show store screen directly
                     console.log('🔄 Fallback: showing store screen directly...');
                     this.showScreen('storeScreen');
                 }
@@ -1348,387 +1412,6 @@ class App {
             this.showLoading(false);
         }
     }    handleBackToStores() {
-        console.log('🔙 Handling back to stores - cleaning up state');
-        
-        try {
-            // Clear current selection state
-            this.currentStore = null;
-            this.currentStep = 'before';
-            this.sessionId = null;
-            this.beforeCategories = [];
-            this.selectedAfterCategories = [];
-            this.categoryData = {};
-            
-            // Clear any saved session data
-            this.clearSession();
-            
-            console.log('🏪 Calling showStores()...');
-            this.showStores();
-        } catch (error) {
-            console.error('❌ Error in handleBackToStores():', error);
-            // Fallback: try to show store screen directly
-            console.log('🔄 Fallback: showing store screen directly...');
-            try {
-                this.showScreen('storeScreen');
-                // Also try to load stores if possible
-                if (this.allStores && this.allStores.length > 0) {
-                    this.renderStores(this.allStores);
-                }
-            } catch (fallbackError) {
-                console.error('❌ Fallback also failed:', fallbackError);
-                this.showToast('Có lỗi xảy ra khi quay lại trang chọn cửa hàng', 'error');
-            }
-        }
-    }
-
-    async handleSubmitClick() {
-        if (this.currentStep === 'after') {
-            await this.handleSubmit('after');
-        }
-    }    async handleSubmit(step) {
-        if (step === 'after') {
-            // For step 2 (after), submit both before and after data
-            await this.submitBothSteps();
-        } else {
-            // For step 1 (before), this shouldn't happen in the new workflow
-            this.showToast('Vui lòng hoàn thành bước 2 để gửi dữ liệu', 'error');
-        }
-    }    async submitBothSteps() {
-        // Get step 1 (before) data - categories that have before images
-        const beforeCategoriesWithData = [];
-        
-        // Get step 2 (after) data - only selected categories with after images
-        const afterCategoriesWithData = [];
-        
-        // Separate before and after data
-        for (const [categoryId, data] of Object.entries(this.categoryData)) {
-            // Check if this category has before images (from step 1)
-            if (data.beforeImages && data.beforeImages.length > 0) {
-                beforeCategoriesWithData.push({
-                    id: categoryId,
-                    name: data.name,
-                    images: data.beforeImages,
-                    note: data.beforeNote || ''
-                });
-            }
-            
-            // Check if this category was selected for after and has after images
-            if (this.selectedAfterCategories.includes(categoryId) && 
-                data.afterImages && data.afterImages.length > 0) {
-                afterCategoriesWithData.push({
-                    id: categoryId,
-                    name: data.name,
-                    images: data.afterImages,
-                    note: data.afterNote || '',
-                    fixed: data.afterFixed // Include the fixed status
-                });
-            }
-        }
-
-        if (beforeCategoriesWithData.length === 0) {
-            this.showToast('Vui lòng chụp ít nhất 1 ảnh ở bước 1', 'error');
-            return;
-        }
-
-        if (afterCategoriesWithData.length === 0) {
-            this.showToast('Vui lòng chụp ít nhất 1 ảnh ở bước 2', 'error');
-            return;
-        }
-
-        this.showLoading(true, 'Đang gửi dữ liệu...');
-
-        try {
-            const storeId = this.currentStore['Store code (Fieldcheck)'] || this.currentStore.STT;
-            
-            // Submit step 1 (before) data
-            const beforeSubmissionData = {
-                userId: this.currentUser.id,
-                username: this.currentUser.username,
-                storeId: storeId,
-                storeName: this.currentStore['Store name'],
-                step: 'before',
-                sessionId: this.sessionId,
-                categories: beforeCategoriesWithData.map(data => ({
-                    categoryId: data.id,
-                    categoryName: data.name,
-                    images: data.images,
-                    note: data.note
-                }))
-            };
-
-            console.log('Submitting step 1 (before) data:', {
-                categoriesCount: beforeSubmissionData.categories.length,
-                sessionId: this.sessionId
-            });
-
-            const beforeResponse = await fetch('/api/submit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(beforeSubmissionData)
-            });
-
-            if (!beforeResponse.ok) {
-                const errorData = await beforeResponse.json();
-                throw new Error(errorData.error || 'Gửi dữ liệu bước 1 thất bại');
-            }            // Submit step 2 (after) data
-            const afterSubmissionData = {
-                userId: this.currentUser.id,
-                username: this.currentUser.username,
-                storeId: storeId,
-                storeName: this.currentStore['Store name'],
-                step: 'after',
-                sessionId: this.sessionId,
-                categories: afterCategoriesWithData.map(data => ({
-                    categoryId: data.id,
-                    categoryName: data.name,
-                    images: data.images,
-                    note: data.note,
-                    fixed: data.fixed // Include the fixed status in submission
-                }))
-            };
-
-            console.log('Submitting step 2 (after) data:', {
-                categoriesCount: afterSubmissionData.categories.length,
-                sessionId: this.sessionId
-            });
-
-            const afterResponse = await fetch('/api/submit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(afterSubmissionData)
-            });
-
-            if (!afterResponse.ok) {
-                const errorData = await afterResponse.json();
-                throw new Error(errorData.error || 'Gửi dữ liệu bước 2 thất bại');
-            }
-
-            // Both submissions successful
-            console.log('✅ Both submissions completed successfully');
-            this.showToast('Gửi dữ liệu thành công! Cảm ơn bạn đã hoàn thành kiểm tra.', 'success');
-            
-            // Clear session after successful submission
-            this.clearSession();
-            
-            // Reset app state
-            this.currentStore = null;
-            this.currentStep = 'before';
-            this.sessionId = null;
-            this.beforeCategories = [];
-            this.selectedAfterCategories = [];
-            this.categoryData = {};
-            
-            console.log('🔄 Starting redirect process...');
-            // Hide loading overlay first
-            this.showLoading(false);
-            
-            // Return to stores screen with a small delay to let UI update
-            setTimeout(() => {
-                console.log('🏪 Calling showStores()...');
-                try {
-                    this.showStores();
-                    console.log('✅ showStores() completed successfully');
-                } catch (error) {
-                    console.error('❌ Error in showStores():', error);
-                    // Fallback: try to show store screen directly
-                    console.log('🔄 Fallback: showing store screen directly...');
-                    this.showScreen('storeScreen');
-                }
-            }, 500);
-        } catch (error) {
-            console.error('Error submitting data:', error);
-            this.showToast(error.message || 'Lỗi gửi dữ liệu', 'error');
-            this.showLoading(false); // Hide loading on error
-        }
-    }
-
-    // Store search functionality
-    handleStoreSearch(e) {
-        const searchTerm = e.target.value.toLowerCase().trim();
-        const clearButton = document.getElementById('clearFilter');
-        
-        if (searchTerm === '') {
-            this.filteredStores = this.allStores;
-            clearButton.classList.remove('show');
-            this.hideDropdown();
-        } else {
-            // Filter stores based on search term
-            this.filteredStores = this.allStores.filter(store =>
-                store['Store name'].toLowerCase().includes(searchTerm) ||
-                (store['Store code (Fieldcheck)'] && store['Store code (Fieldcheck)'].toLowerCase().includes(searchTerm)) ||
-                (store['Address (No.Street, Ward/District, City, Province/State/Region)'] &&
-                 store['Address (No.Street, Ward/District, City, Province/State/Region)'].toLowerCase().includes(searchTerm))
-            );
-            clearButton.classList.add('show');
-            this.showDropdown(searchTerm);
-        }
-        
-        this.renderStores(this.filteredStores);
-        this.selectedDropdownIndex = -1; // Reset selection
-    }
-
-    handleSearchKeydown(e) {
-        const dropdown = document.getElementById('searchDropdown');
-        const items = dropdown.querySelectorAll('.dropdown-item');
-        
-        switch(e.key) {
-            case 'ArrowDown':
-                e.preventDefault();
-                this.selectedDropdownIndex = Math.min(this.selectedDropdownIndex + 1, items.length - 1);
-                this.updateDropdownSelection(items);
-                break;
-            case 'ArrowUp':
-                e.preventDefault();
-                this.selectedDropdownIndex = Math.max(this.selectedDropdownIndex - 1, -1);
-                this.updateDropdownSelection(items);
-                break;
-            case 'Enter':
-                e.preventDefault();
-                if (this.selectedDropdownIndex >= 0 && items[this.selectedDropdownIndex]) {
-                    const storeName = items[this.selectedDropdownIndex].textContent;
-                    document.getElementById('storeSearch').value = storeName;
-                    this.hideDropdown();
-                    this.handleStoreSearch({ target: { value: storeName } });
-                }
-                break;
-            case 'Escape':
-                this.hideDropdown();
-                break;
-        }
-    }
-
-    handleSearchFocus() {
-        const searchTerm = document.getElementById('storeSearch').value.toLowerCase().trim();
-        if (searchTerm) {
-            this.showDropdown(searchTerm);
-        }
-    }
-
-    showDropdown(searchTerm) {
-        const dropdown = document.getElementById('searchDropdown');
-        
-        // Filter store names for autocomplete
-        const matchingNames = this.allStoreNames.filter(name =>
-            name.toLowerCase().includes(searchTerm)
-        ).slice(0, 10); // Limit to 10 suggestions
-        
-        if (matchingNames.length > 0) {
-            dropdown.innerHTML = matchingNames.map(name =>
-                `<div class="dropdown-item">${name}</div>`
-            ).join('');
-            
-            // Add click handlers
-            dropdown.querySelectorAll('.dropdown-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    document.getElementById('storeSearch').value = item.textContent;
-                    this.hideDropdown();
-                    this.handleStoreSearch({ target: { value: item.textContent } });
-                });
-            });
-            
-            dropdown.classList.add('show');
-        } else {
-            this.hideDropdown();
-        }
-    }
-
-    updateDropdownSelection(items) {
-        items.forEach((item, index) => {
-            item.classList.toggle('selected', index === this.selectedDropdownIndex);
-        });
-    }
-
-    hideDropdown() {
-        document.getElementById('searchDropdown').classList.remove('show');
-        this.selectedDropdownIndex = -1;
-    }
-
-    clearStoreFilter() {
-        document.getElementById('storeSearch').value = '';
-        document.getElementById('clearFilter').classList.remove('show');
-        this.filteredStores = this.allStores;
-        this.renderStores(this.allStores);
-        this.hideDropdown();
-    }
-
-    handleClickOutside(e) {
-        const searchContainer = document.querySelector('.search-container');
-        if (searchContainer && !searchContainer.contains(e.target)) {
-            this.hideDropdown();
-        }
-    }
-
-    // User info loading for change password
-    async loadUserInfo() {
-        const userId = document.getElementById('changePasswordUserIdInput').value.trim();
-        
-        if (!userId) {
-            this.showToast('Vui lòng nhập User ID', 'error');
-            return;
-        }
-        
-        this.showLoading(true);
-        
-        try {
-            const response = await fetch(`/api/user-info/${userId}`);
-            
-            if (response.ok) {
-                const userInfo = await response.json();
-                
-                // Update UI with user info
-                document.getElementById('changePasswordUsername').textContent = userInfo.username;
-                document.getElementById('changePasswordUserId').textContent = `ID: ${userInfo.id}`;
-                document.getElementById('changePasswordRole').textContent = userInfo.role;
-                
-                // Show user info card and hide user ID input
-                document.querySelector('.user-info-card').style.display = 'block';
-                document.getElementById('userIdGroup').style.display = 'none';
-                
-                this.showToast('Thông tin người dùng đã được tải', 'success');
-            } else {
-                const error = await response.json();
-                this.showToast(error.error || 'Không tìm thấy người dùng', 'error');
-            }
-        } catch (error) {
-            console.error('Error loading user info:', error);
-            this.showToast('Lỗi kết nối', 'error');
-        } finally {
-            this.showLoading(false);
-        }
-    }
-
-    // Admin functions
-    async handleExport() {
-        this.showLoading(true, 'Đang xuất dữ liệu...');
-        
-        try {
-            const response = await fetch('/api/export');
-            
-            if (response.ok) {
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `store-inspection-export-${new Date().toISOString().split('T')[0]}.xlsx`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-                
-                this.showToast('Xuất dữ liệu thành công!', 'success');
-            } else {
-                const error = await response.json();
-                this.showToast(error.error || 'Lỗi xuất dữ liệu', 'error');
-            }
-        } catch (error) {
-            console.error('Export error:', error);
-            this.showToast('Lỗi kết nối', 'error');
-        } finally {
-            this.showLoading(false);
-        }
-    }
-
-    handleBackToStores() {
         console.log('🔙 Handling back to stores - cleaning up state');
         
         try {

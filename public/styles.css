@@ -371,24 +371,52 @@ body {
 
 /* Fixed Question Styles */
 .fixed-question {
-    margin: 15px 0;
+    margin: 0;
     padding: 15px;
     background: rgba(102, 126, 234, 0.05);
-    border-radius: 10px;
+    border-radius: 8px;
     border-left: 4px solid #667eea;
+    height: fit-content;
+}
+
+.fixed-question.needs-answer {
+    background: rgba(220, 53, 69, 0.08);
+    border-left-color: #dc3545;
+    animation: pulse-warning 2s infinite;
+}
+
+@keyframes pulse-warning {
+    0%, 100% { 
+        background: rgba(220, 53, 69, 0.08); 
+    }
+    50% { 
+        background: rgba(220, 53, 69, 0.12); 
+    }
 }
 
 .fixed-question label {
     display: block;
     color: #333;
     font-weight: 600;
-    font-size: 0.95rem;
-    margin-bottom: 10px;
+    font-size: 0.9rem;
+    margin-bottom: 12px;
+    line-height: 1.3;
+}
+
+.fixed-question.needs-answer label {
+    color: #dc3545;
+}
+
+.required-indicator {
+    color: #dc3545;
+    font-weight: bold;
+    font-size: 1.1rem;
 }
 
 .fixed-options {
     display: flex;
-    gap: 20px;
+    flex-direction: column;
+    gap: 10px;
 }
 
 .radio-option {
@@ -398,6 +426,13 @@ body {
     cursor: pointer;
     font-weight: 500 !important;
     margin-bottom: 0 !important;
+    padding: 5px;
+    border-radius: 6px;
+    transition: background-color 0.2s ease;
+}
+
+.radio-option:hover {
+    background: rgba(102, 126, 234, 0.05);
 }
 
 .radio-option input[type="radio"] {
@@ -417,21 +452,17 @@ body {
     color: #667eea;
 }
 
-.note-input {
-    width: 100%;
-    padding: 12px;
-    border: 2px solid #e1e5e9;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    resize: vertical;
-    min-height: 80px;
-    font-family: inherit;
-}
-
-.note-input:focus {
-    outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+.warning-text {
+    color: #dc3545;
+    font-size: 0.8rem;
+    font-weight: 500;
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 8px;
+    background: rgba(220, 53, 69, 0.05);
+    border-radius: 4px;
 }
 
 /* Admin */
@@ -1562,40 +1593,70 @@ mark {
     }
 }
 
-/* Enhanced existing image preview styles */
-.image-preview {
+/* Category Footer Layout */
+.category-footer {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    gap: 20px;
     margin-top: 15px;
-    justify-content: flex-start;
 }
 
-/* Override existing image-remove styles for consistency */
-.image-preview .image-remove {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    background: linear-gradient(135deg, #ff6b6b, #ee5a24);
-    color: white;
-    border: none;
-    border-radius: 50%;
-    width: 24px;
-    height: 24px;
-    font-size: 10px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.footer-left {
+    flex: 1;
+}
+
+.footer-right {
+    flex: 1;
+}
+
+/* Note Section Styles */
+.note-section {
+    width: 100%;
+}
+
+.note-label {
+    display: block;
+    color: #333;
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+}
+
+.note-input {
+    width: 100%;
+    min-height: 80px;
+    padding: 12px;
+    border: 2px solid #e1e5e9;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    resize: vertical;
+    background: #ffffff;
     transition: all 0.3s ease;
-    opacity: 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-.image-preview-item:hover .image-remove {
-    opacity: 1;
+.note-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    background: #fafbfc;
 }
 
-.image-preview .image-remove:hover {
-    background: linear-gradient(135deg, #ee5a24, #ff6b6b);
-    transform: scale(1.1);
+.note-input::placeholder {
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* Mobile responsiveness for two-column layout */
+@media (max-width: 600px) {
+    .category-footer {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .footer-left,
+    .footer-right {
+        flex: none;
+    }
 }

@@ -131,20 +131,19 @@
                                         Upload Stores
                                     </button>
                                 </div>
-                            </div>
-                            <div class="template-info">
+                            </div>                            <div class="template-info">
                                 <h4>Format yêu cầu:</h4>
-                                <p>File Excel cần có các cột: <strong>id, name, address, region</strong></p>
+                                <p>File Excel cần có các cột: <strong>stt, tdlName, tdsName, promoterName, typeShop, headcountInvest, headcountActive, seniority, storeName, storeCode, dealerCode, address, storeType, channel, keyCities, nearestKeyCity, rankingCommune, base, shopTier, region, province, city, district</strong></p>
                                 <a href="/api/template/stores-sample" class="btn-secondary">
                                     <i class="fas fa-download"></i>
-                                    Tải mẫu
+                                    Tải dữ liệu hiện tại
                                 </a>
+                                <small style="display: block; margin-top: 5px; color: #666;">Tải về file Excel chứa toàn bộ dữ liệu cửa hàng hiện tại</small>
                             </div>
                         </div>
                         
                         <!-- Categories Tab -->
-                        <div id="categoriesTab" class="tab-content">
-                            <div class="upload-section">
+                        <div id="categoriesTab" class="tab-content">                            <div class="upload-section">
                                 <h3><i class="fas fa-upload"></i> Upload Template Danh mục</h3>
                                 <div class="file-upload-area">
                                     <input type="file" id="categoriesFileInput" accept=".xlsx" style="display: none;">
@@ -158,14 +157,14 @@
                                         Upload Categories
                                     </button>
                                 </div>
-                            </div>
-                            <div class="template-info">
+                            </div>                            <div class="template-info">
                                 <h4>Format yêu cầu:</h4>
                                 <p>File Excel cần có các cột: <strong>id, name, description, isActive, order</strong></p>
                                 <a href="/api/template/categories-sample" class="btn-secondary">
                                     <i class="fas fa-download"></i>
-                                    Tải mẫu
+                                    Tải dữ liệu hiện tại
                                 </a>
+                                <small style="display: block; margin-top: 5px; color: #666;">Tải về file Excel chứa toàn bộ dữ liệu danh mục hiện tại</small>
                             </div>
                         </div>
                         
@@ -185,11 +184,14 @@
                         <h2><i class="fas fa-users"></i> Quản lý User</h2>
                         <span class="close" id="closeUserModal">&times;</span>
                     </div>
-                    <div class="modal-body">
-                        <div class="user-actions">
+                    <div class="modal-body">                        <div class="user-actions">
                             <button id="addUserBtn" class="btn-primary">
                                 <i class="fas fa-user-plus"></i>
                                 Thêm User Mới
+                            </button>
+                            <button id="exportUsersBtn" class="btn-success">
+                                <i class="fas fa-download"></i>
+                                Xuất dữ liệu Users
                             </button>
                             <button id="refreshUsersBtn" class="btn-secondary">
                                 <i class="fas fa-sync-alt"></i>
@@ -199,11 +201,10 @@
                         
                         <div class="users-table-container">
                             <table class="users-table">
-                                <thead>
-                                    <tr>
+                                <thead>                                    <tr>
                                         <th>Username</th>
                                         <th>User ID</th>
-                                        <th>TDS Name</th>
+                                        <th>Role</th>
                                         <th>Trạng thái</th>
                                         <th>Ngày tạo</th>
                                         <th>Thao tác</th>
@@ -239,11 +240,15 @@
                                     <input type="text" id="userUserId" name="userId" required>
                                 </div>
                             </div>
-                            
-                            <div class="form-row">
+                              <div class="form-row">
                                 <div class="form-group">
-                                    <label for="userTdsName">TDS Name</label>
-                                    <input type="text" id="userTdsName" name="tdsName">
+                                    <label for="userRole">Role <span class="required">*</span></label>
+                                    <select id="userRole" name="role" required>
+                                        <option value="">Chọn Role</option>
+                                        <option value="Admin">Admin</option>
+                                        <option value="TDL">TDL</option>
+                                        <option value="TDS">TDS</option>
+                                    </select>
                                 </div>
                                 <div class="form-group">
                                     <label for="userPassword">Password <span class="required">*</span></label>
@@ -277,8 +282,7 @@
             </div>
 
             <table class="admin-table">
-                <thead>
-                    <tr>
+                <thead>                    <tr>
                         <th>
                             <input type="checkbox" id="selectAllCheckbox" title="Chọn tất cả">
                         </th>
@@ -381,8 +385,8 @@
             const userModal = document.getElementById('userModal');
             const closeUserModal = document.getElementById('closeUserModal');
             const userFormModal = document.getElementById('userFormModal');
-            const closeUserFormModal = document.getElementById('closeUserFormModal');
-            const addUserBtn = document.getElementById('addUserBtn');
+            const closeUserFormModal = document.getElementById('closeUserFormModal');            const addUserBtn = document.getElementById('addUserBtn');
+            const exportUsersBtn = document.getElementById('exportUsersBtn');
             const refreshUsersBtn = document.getElementById('refreshUsersBtn');
             const usersTableBody = document.getElementById('usersTableBody');
             const userForm = document.getElementById('userForm');
@@ -417,7 +421,7 @@
             let selectedStoresFile = null;
             let selectedCategoriesFile = null;
             let users = [];
-            let editingUserId = null;let filters = {
+            let editingUserId = null;            let filters = {
                 username: '',
                 tdsName: '',
                 store: '',
@@ -532,9 +536,13 @@
             }
             if (addUserBtn) {
                 addUserBtn.addEventListener('click', () => openUserForm());
-            }
-            if (refreshUsersBtn) {
+            }            if (refreshUsersBtn) {
                 refreshUsersBtn.addEventListener('click', loadUsers);
+            }
+            if (exportUsersBtn) {
+                exportUsersBtn.addEventListener('click', () => {
+                    window.open('/api/template/users-sample', '_blank');
+                });
             }
             if (userForm) {
                 userForm.addEventListener('submit', handleUserFormSubmit);
@@ -645,8 +653,7 @@
                 }
                 
                 showLoading(false);
-            }
-              async function loadSubmissions() {
+            }              async function loadSubmissions() {
                 showLoading(true);
                   try {
                     const queryParams = new URLSearchParams({
@@ -997,8 +1004,7 @@
                 }
                 
                 showLoading(false);
-            }
-              async function handleExport() {
+            }              async function handleExport() {
                 showLoading(true);
                   try {
                     const queryParams = new URLSearchParams({
@@ -1033,9 +1039,7 @@
                     showToast('Lỗi kết nối', 'error');
                 }
                   showLoading(false);
-            }
-
-            async function handleExportPptx() {
+            }            async function handleExportPptx() {
                 showLoading(true);
                 
                 try {
@@ -1377,7 +1381,7 @@
                     userFormTitle.innerHTML = '<i class="fas fa-user-edit"></i> Chỉnh sửa User';
                     document.getElementById('userUsername').value = user.username || '';
                     document.getElementById('userUserId').value = user.userId || '';
-                    document.getElementById('userTdsName').value = user.tdsName || '';
+                    document.getElementById('userRole').value = user.role || '';
                     document.getElementById('userPassword').value = '';
                     document.getElementById('userPassword').placeholder = 'Bỏ trống nếu không muốn đổi mật khẩu';
                     document.getElementById('userPassword').required = false;
@@ -1447,7 +1451,7 @@
                     row.innerHTML = `
                         <td>${user.username || 'N/A'}</td>
                         <td>${user.userId || 'N/A'}</td>
-                        <td>${user.tdsName || 'N/A'}</td>
+                        <td>${user.role || 'N/A'}</td>
                         <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                         <td>${createdDate}</td>
                         <td class="actions">

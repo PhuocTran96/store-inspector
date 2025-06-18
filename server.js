@@ -33,11 +33,14 @@ const storage = multer.diskStorage({
 const fileUpload = multer({ 
   storage: storage,
   fileFilter: (req, file, cb) => {
-    // Accept CSV files only
-    if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
+    // Accept CSV and Excel files
+    if (file.mimetype === 'text/csv' || 
+        file.originalname.endsWith('.csv') ||
+        file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        file.originalname.endsWith('.xlsx')) {
       cb(null, true);
     } else {
-      cb(new Error('Only CSV files are allowed!'), false);
+      cb(new Error('Only CSV and Excel files are allowed!'), false);
     }
   },
   limits: {
@@ -357,6 +360,16 @@ app.post('/api/submit', async (req, res) => {
     }
     
     console.log(`📋 Processing ${categories.length} category submissions for step: ${step}`);
+      // Debug: Log the structure of categories to see note data
+    categories.forEach((category, index) => {
+      console.log(`📝 Category ${index + 1}:`, {
+        categoryId: category.categoryId,
+        categoryName: category.categoryName,
+        note: category.note,
+        fixed: category.fixed, // Log the fixed status
+        imageCount: category.images ? category.images.length : 0
+      });
+    });
     
     // Find store information
     const store = storesData.find(s =>
@@ -415,8 +428,7 @@ app.post('/api/submit', async (req, res) => {
     
     // Create submission documents for each category
     for (const category of categories) {
-      try {
-        const newSubmission = new Submission({
+      try {        const newSubmission = new Submission({
           username: req.session.user.username,
           userId: req.session.user.id || req.session.user.userId,
           tdsName: (store.tdsName || store['TDS name'] || '').trim(),
@@ -426,6 +438,7 @@ app.post('/api/submit', async (req, res) => {
           categoryId: category.categoryId,
           categoryName: category.categoryName,
           note: category.note || '',
+          fixed: category.fixed, // Save the yes/no answer separately
           images: category.processedImages || [],
           submissionType: step,
           sessionId: sessionId,
@@ -546,15 +559,14 @@ app.post('/api/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 
-  console.log(`Tìm thấy user: ${user.Username}, Role: ${user.Role}, User ID: ${user['User ID']}`);
-
-  // For demo purposes, we'll use simple password comparison
+  console.log(`Tìm thấy user: ${user.Username}, Role: ${user.Role}, User ID: ${user['User ID']}`);  // For demo purposes, we'll use simple password comparison
   // In production, use proper password hashing
-  if (user.Password === password) {    req.session.user = {
+  if (user.Password === password) {
+    req.session.user = {
       id: user['User ID'].trim(),
       userId: user['User ID'].trim(), // Add for consistency
       username: user.Username ? user.Username.trim() : '',
-      tdsName: user['TDS name'] ? user['TDS name'].trim() : '',
+      tdsName: user['TDS name'] ? user['TDS name'].trim() : '', // Keep for compatibility
       role: user.Role ? user.Role.trim() : ''
     };
     
@@ -800,59 +812,154 @@ app.delete('/api/admin/categories/:id', async (req, res) => {
 // Template Management Endpoints
 // Sample template downloads
 app.get('/api/template/stores-sample', async (req, res) => {
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('Stores Template');
-  worksheet.columns = [
-    { header: 'storeCode', key: 'storeCode' },
-    { header: 'storeName', key: 'storeName' },
-    { header: 'tdlName', key: 'tdlName' },
-    { header: 'tdsName', key: 'tdsName' },
-    { header: 'promoterName', key: 'promoterName' },
-    { header: 'typeShop', key: 'typeShop' },
-    { header: 'headcountInvest', key: 'headcountInvest' },
-    { header: 'headcountActive', key: 'headcountActive' },
-    { header: 'seniority', key: 'seniority' },
-    { header: 'dealerCode', key: 'dealerCode' },
-    { header: 'address', key: 'address' },
-    { header: 'storeType', key: 'storeType' },
-    { header: 'channel', key: 'channel' },
-    { header: 'keyCities', key: 'keyCities' },
-    { header: 'nearestKeyCity', key: 'nearestKeyCity' },
-    { header: 'rankingCommune', key: 'rankingCommune' },
-    { header: 'base', key: 'base' },
-    { header: 'shopTier', key: 'shopTier' },
-    { header: 'region', key: 'region' },
-    { header: 'province', key: 'province' },
-    { header: 'city', key: 'city' },
-    { header: 'district', key: 'district' }
-  ];
-  worksheet.addRow({
-    storeCode: '52003112', storeName: 'Nguyen Kim Dist 1', tdlName: 'Thân Anh Hiếu', tdsName: 'Võ Minh Nhật', promoterName: 'Phạm Thị Hiền', typeShop: 'PRT', headcountInvest: 3, headcountActive: 3, seniority: 925, dealerCode: 'SG01', address: '63-65-67 TRẦN HƯNG ĐẠO P. CẦU ÔNG LÃNH, Q.1, HCM', storeType: 'A', channel: 'Nguyen Kim', keyCities: 1, nearestKeyCity: 'Ho Chi Minh', rankingCommune: 'Trung Tâm Tỉnh', base: 'In base', shopTier: 'Tier 1', region: 'South', province: 'Ho Chi Minh', city: 'Dist 1', district: 'Dist 1'
-  });
-  worksheet.addRow({
-    storeCode: '52000307', storeName: 'Cao Phong Dist 4', tdlName: 'Thân Anh Hiếu', tdsName: 'Võ Minh Nhật', promoterName: 'Nguyễn Thị Ánh Ngọc', typeShop: 'PRT', headcountInvest: 2, headcountActive: 2, seniority: 1158, dealerCode: 'H009', address: 'Chung Cu H2, 196 Hoang Dieu, Phuong 8, Quan 4, Ho Chi Minh', storeType: 'A', channel: 'Cao Phong', keyCities: 1, nearestKeyCity: 'Ho Chi Minh', rankingCommune: 'Gần Trung Tâm Tỉnh', base: 'In base', shopTier: 'Tier 1', region: 'South', province: 'Ho Chi Minh', city: 'Dist 4', district: 'Dist 4'
-  });
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', 'attachment; filename="stores-template.xlsx"');
-  await workbook.xlsx.write(res);
-  res.end();
+  try {
+    // Get all stores from MongoDB
+    const stores = await Store.find({}).sort({ storeName: 1 }).lean();
+    
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Stores Data');
+    
+    // Use the exact field names that the database expects
+    worksheet.columns = [
+      { header: 'stt', key: 'stt', width: 10 },
+      { header: 'tdlName', key: 'tdlName', width: 20 },
+      { header: 'tdsName', key: 'tdsName', width: 20 },
+      { header: 'promoterName', key: 'promoterName', width: 20 },
+      { header: 'typeShop', key: 'typeShop', width: 10 },
+      { header: 'headcountInvest', key: 'headcountInvest', width: 15 },
+      { header: 'headcountActive', key: 'headcountActive', width: 15 },
+      { header: 'seniority', key: 'seniority', width: 15 },
+      { header: 'storeName', key: 'storeName', width: 30 },
+      { header: 'storeCode', key: 'storeCode', width: 15 },
+      { header: 'dealerCode', key: 'dealerCode', width: 15 },
+      { header: 'address', key: 'address', width: 50 },
+      { header: 'storeType', key: 'storeType', width: 10 },
+      { header: 'channel', key: 'channel', width: 20 },
+      { header: 'keyCities', key: 'keyCities', width: 15 },
+      { header: 'nearestKeyCity', key: 'nearestKeyCity', width: 20 },
+      { header: 'rankingCommune', key: 'rankingCommune', width: 20 },
+      { header: 'base', key: 'base', width: 15 },
+      { header: 'shopTier', key: 'shopTier', width: 15 },
+      { header: 'region', key: 'region', width: 15 },
+      { header: 'province', key: 'province', width: 20 },
+      { header: 'city', key: 'city', width: 20 },
+      { header: 'district', key: 'district', width: 20 }
+    ];
+    
+    // Add all actual store data
+    stores.forEach(store => {
+      worksheet.addRow({
+        stt: store.stt || '',
+        tdlName: store.tdlName || '',
+        tdsName: store.tdsName || '',
+        promoterName: store.promoterName || '',
+        typeShop: store.typeShop || '',
+        headcountInvest: store.headcountInvest || '',
+        headcountActive: store.headcountActive || '',
+        seniority: store.seniority || '',
+        storeName: store.storeName || '',
+        storeCode: store.storeCode || '',
+        dealerCode: store.dealerCode || '',
+        address: store.address || '',
+        storeType: store.storeType || '',
+        channel: store.channel || '',
+        keyCities: store.keyCities || '',
+        nearestKeyCity: store.nearestKeyCity || '',
+        rankingCommune: store.rankingCommune || '',
+        base: store.base || '',
+        shopTier: store.shopTier || '',
+        region: store.region || '',
+        province: store.province || '',
+        city: store.city || '',
+        district: store.district || ''
+      });
+    });
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="stores-data-${new Date().toISOString().split('T')[0]}.xlsx"`);
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('Error exporting stores data:', error);
+    res.status(500).json({ error: 'Failed to export stores data' });
+  }
 });
 
-app.get('/api/template/categories-sample', (req, res) => {
-  const sampleData = [
-    { id: 'CAT001', name: 'Danh mục mẫu 1', description: 'Mô tả danh mục 1', isActive: 'true', order: '1' },
-    { id: 'CAT002', name: 'Danh mục mẫu 2', description: 'Mô tả danh mục 2', isActive: 'true', order: '2' },
-    { id: 'CAT003', name: 'Danh mục mẫu 3', description: 'Mô tả danh mục 3', isActive: 'false', order: '3' }
-  ];
-  
-  const csv = [
-    'id,name,description,isActive,order',
-    ...sampleData.map(cat => `${cat.id},"${cat.name}","${cat.description}",${cat.isActive},${cat.order}`)
-  ].join('\n');
-  
-  res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', 'attachment; filename="categories-template.csv"');
-  res.send(csv);
+app.get('/api/template/categories-sample', async (req, res) => {
+  try {
+    // Get all categories from MongoDB
+    const categories = await Category.find({}).sort({ order: 1 }).lean();
+    
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Categories Data');
+    
+    // Use the exact field names that the database expects
+    worksheet.columns = [
+      { header: 'id', key: 'id', width: 15 },
+      { header: 'name', key: 'name', width: 30 },
+      { header: 'description', key: 'description', width: 50 },
+      { header: 'isActive', key: 'isActive', width: 10 },
+      { header: 'order', key: 'order', width: 10 }
+    ];
+    
+    // Add all actual category data
+    categories.forEach(category => {
+      worksheet.addRow({
+        id: category.id || '',
+        name: category.name || '',
+        description: category.description || '',
+        isActive: category.isActive !== undefined ? category.isActive.toString() : 'true',
+        order: category.order || ''
+      });
+    });
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="categories-data-${new Date().toISOString().split('T')[0]}.xlsx"`);
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('Error exporting categories data:', error);
+    res.status(500).json({ error: 'Failed to export categories data' });
+  }
+});
+
+// Export users template/data
+app.get('/api/template/users-sample', async (req, res) => {
+  try {
+    // Get all users from MongoDB
+    const users = await User.find({}, { password: 0 }).sort({ username: 1 }).lean();
+    
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Users Data');
+    
+    // Use the exact field names that the database expects
+    worksheet.columns = [
+      { header: 'username', key: 'username', width: 20 },
+      { header: 'userId', key: 'userId', width: 15 },
+      { header: 'role', key: 'role', width: 15 },
+      { header: 'status', key: 'status', width: 10 },
+      { header: 'createdAt', key: 'createdAt', width: 20 }
+    ];
+    
+    // Add all actual user data
+    users.forEach(user => {
+      worksheet.addRow({
+        username: user.username || '',
+        userId: user.userId || '',
+        role: user.role || '',
+        status: user.status || 'active',
+        createdAt: user.createdAt ? new Date(user.createdAt).toISOString().split('T')[0] : ''
+      });
+    });
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="users-data-${new Date().toISOString().split('T')[0]}.xlsx"`);
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('Error exporting users data:', error);
+    res.status(500).json({ error: 'Failed to export users data' });
+  }
 });
 
 // Upload and process stores template
@@ -870,12 +977,34 @@ app.post('/api/template/upload-stores', fileUpload.single('storesFile'), async (
     if (ext === 'xlsx') {
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.readFile(filePath);
-      const worksheet = workbook.worksheets[0];
-      worksheet.eachRow((row, rowNumber) => {
+      const worksheet = workbook.worksheets[0];      worksheet.eachRow((row, rowNumber) => {
         if (rowNumber === 1) return; // skip header
         const values = row.values;
+        // Map according to the template column order: stt, tdlName, tdsName, promoterName, typeShop, headcountInvest, headcountActive, seniority, storeName, storeCode, dealerCode, address, storeType, channel, keyCities, nearestKeyCity, rankingCommune, base, shopTier, region, province, city, district
         stores.push({
-          storeCode: values[1], storeName: values[2], tdlName: values[3], tdsName: values[4], promoterName: values[5], typeShop: values[6], headcountInvest: values[7], headcountActive: values[8], seniority: values[9], dealerCode: values[10], address: values[11], storeType: values[12], channel: values[13], keyCities: values[14], nearestKeyCity: values[15], rankingCommune: values[16], base: values[17], shopTier: values[18], region: values[19], province: values[20], city: values[21], district: values[22]
+          stt: values[1],
+          tdlName: values[2],
+          tdsName: values[3],
+          promoterName: values[4],
+          typeShop: values[5],
+          headcountInvest: values[6],
+          headcountActive: values[7],
+          seniority: values[8],
+          storeName: values[9],
+          storeCode: values[10],
+          dealerCode: values[11],
+          address: values[12],
+          storeType: values[13],
+          channel: values[14],
+          keyCities: values[15],
+          nearestKeyCity: values[16],
+          rankingCommune: values[17],
+          base: values[18],
+          shopTier: values[19],
+          region: values[20],
+          province: values[21],
+          city: values[22],
+          district: values[23]
         });
       });
     } else {
@@ -1129,11 +1258,11 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
 // Create new user
 app.post('/api/admin/users', requireAdmin, async (req, res) => {
   try {
-    const { username, userId, tdsName, password, status = 'active' } = req.body;
+    const { username, userId, role, password, status = 'active' } = req.body;
     
     // Validate required fields
-    if (!username || !userId || !password) {
-      return res.status(400).json({ error: 'Username, userId, and password are required' });
+    if (!username || !userId || !password || !role) {
+      return res.status(400).json({ error: 'Username, userId, role, and password are required' });
     }
     
     // Check if username or userId already exists
@@ -1154,7 +1283,7 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
     const newUser = new User({
       username,
       userId,
-      tdsName: tdsName || '',
+      role,
       password: hashedPassword,
       status,
       createdAt: new Date()
@@ -1175,7 +1304,7 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
 app.put('/api/admin/users/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { username, userId, tdsName, password, status } = req.body;
+    const { username, userId, role, password, status } = req.body;
     
     const user = await User.findById(id);
     if (!user) {
@@ -1202,7 +1331,7 @@ app.put('/api/admin/users/:id', requireAdmin, async (req, res) => {
     // Update fields
     if (username) user.username = username;
     if (userId) user.userId = userId;
-    if (tdsName !== undefined) user.tdsName = tdsName;
+    if (role !== undefined) user.role = role;
     if (status) user.status = status;
     
     // Update password if provided
@@ -1354,38 +1483,78 @@ app.get('/api/user/history', async (req, res) => {
 // Export submissions as Excel
 app.get('/api/admin/export', requireAdmin, async (req, res) => {
   try {
-    // Build filter from query params (reuse your admin filter logic)
+    // Build filter from query params (use same logic as submissions API)
     const filter = {};
-    if (req.query.username) filter.username = { $regex: req.query.username, $options: 'i' };
-    if (req.query.tdsName) filter.tdsName = { $regex: req.query.tdsName, $options: 'i' };
-    if (req.query.store) filter.storeName = { $regex: req.query.store, $options: 'i' };
-    if (req.query.category) filter.categoryName = { $regex: req.query.category, $options: 'i' };
+    if (req.query.username && req.query.username.trim() !== '') {
+      filter.username = { $regex: req.query.username.trim(), $options: 'i' };
+    }
+    if (req.query.tdsName && req.query.tdsName.trim() !== '') {
+      filter.tdsName = { $regex: req.query.tdsName.trim(), $options: 'i' };
+    }
+    if (req.query.store && req.query.store.trim() !== '') {
+      filter.storeName = { $regex: req.query.store.trim(), $options: 'i' };
+    }
+    if (req.query.category && req.query.category.trim() !== '') {
+      filter.categoryName = { $regex: req.query.category.trim(), $options: 'i' };
+    }
     if (req.query.startDate || req.query.endDate) {
       filter.submittedAt = {};
-      if (req.query.startDate) filter.submittedAt.$gte = new Date(req.query.startDate);
-      if (req.query.endDate) filter.submittedAt.$lte = new Date(req.query.endDate);
-    }
+      if (req.query.startDate) {
+        filter.submittedAt.$gte = new Date(req.query.startDate);
+      }
+      if (req.query.endDate) {
+        const endDateTime = new Date(req.query.endDate);
+        endDateTime.setHours(23, 59, 59, 999); // End of day
+        filter.submittedAt.$lte = endDateTime;
+      }    }
+    
+    console.log('Export filter:', filter);
     const submissions = await Submission.find(filter).sort({ submittedAt: -1 }).lean();
+    console.log(`Found ${submissions.length} submissions for Excel export`);
+    
+    // Debug: Log some sample submission dates if any exist
+    if (submissions.length > 0) {
+      console.log('Sample submission dates:');
+      submissions.slice(0, 3).forEach((sub, idx) => {
+        console.log(`  ${idx + 1}. ${sub.submittedAt} (${sub.storeName}) - Note: "${sub.note}" - Fixed: ${sub.fixed} - Type: ${sub.submissionType}`);
+      });
+    } else {
+      console.log('No submissions found matching the filter criteria');
+    }
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Submissions');
-    worksheet.columns = [
-      { header: 'Username', key: 'username' },
-      { header: 'TDS Name', key: 'tdsName' },
-      { header: 'Store Name', key: 'storeName' },
-      { header: 'Category', key: 'categoryName' },
-      { header: 'Type', key: 'submissionType' },
-      { header: 'Note', key: 'note' },
-      { header: 'Images', key: 'images' },
-      { header: 'Date', key: 'submittedAt' }
-    ];
-    submissions.forEach(sub => {
+    const worksheet = workbook.addWorksheet('Submissions');    worksheet.columns = [
+      { header: 'Username', key: 'username', width: 15 },
+      { header: 'TDS Name', key: 'tdsName', width: 20 },
+      { header: 'Store Name', key: 'storeName', width: 30 },
+      { header: 'Category', key: 'categoryName', width: 25 },
+      { header: 'Step (Before/After)', key: 'submissionType', width: 15 },
+      { header: 'Note', key: 'note', width: 30 },
+      { header: 'Fixed Status', key: 'fixedStatus', width: 15 },
+      { header: 'Images', key: 'images', width: 50 },
+      { header: 'Date', key: 'submittedAt', width: 20 }
+    ];    submissions.forEach(sub => {
+      // Format the fixed status for display
+      let fixedStatus = '';
+      if (sub.submissionType === 'after') {
+        if (sub.fixed === true) {
+          fixedStatus = 'Đã fix';
+        } else if (sub.fixed === false) {
+          fixedStatus = 'Chưa fix';
+        } else {
+          fixedStatus = 'Chưa trả lời';
+        }
+      } else {
+        fixedStatus = 'N/A (Before step)';
+      }
+      
       worksheet.addRow({
-        username: sub.username,
-        tdsName: sub.tdsName,
-        storeName: sub.storeName,
-        categoryName: sub.categoryName,
-        submissionType: sub.submissionType,
-        note: sub.note,
+        username: sub.username || '',
+        tdsName: sub.tdsName || '',
+        storeName: sub.storeName || '',
+        categoryName: sub.categoryName || '',
+        submissionType: sub.submissionType || '',
+        note: sub.note || '',
+        fixedStatus: fixedStatus,
         images: (sub.images || []).join(', '),
         submittedAt: sub.submittedAt ? new Date(sub.submittedAt).toLocaleString('vi-VN') : ''
       });
@@ -1404,16 +1573,33 @@ app.get('/api/admin/export', requireAdmin, async (req, res) => {
 app.get('/api/admin/export-pptx', requireAdmin, async (req, res) => {
   try {
     const filter = {};
-    if (req.query.username) filter.username = { $regex: req.query.username, $options: 'i' };
-    if (req.query.tdsName) filter.tdsName = { $regex: req.query.tdsName, $options: 'i' };
-    if (req.query.store) filter.storeName = { $regex: req.query.store, $options: 'i' };
-    if (req.query.category) filter.categoryName = { $regex: req.query.category, $options: 'i' };
+    if (req.query.username && req.query.username.trim() !== '') {
+      filter.username = { $regex: req.query.username.trim(), $options: 'i' };
+    }
+    if (req.query.tdsName && req.query.tdsName.trim() !== '') {
+      filter.tdsName = { $regex: req.query.tdsName.trim(), $options: 'i' };
+    }
+    if (req.query.store && req.query.store.trim() !== '') {
+      filter.storeName = { $regex: req.query.store.trim(), $options: 'i' };
+    }
+    if (req.query.category && req.query.category.trim() !== '') {
+      filter.categoryName = { $regex: req.query.category.trim(), $options: 'i' };
+    }
     if (req.query.startDate || req.query.endDate) {
       filter.submittedAt = {};
-      if (req.query.startDate) filter.submittedAt.$gte = new Date(req.query.startDate);
-      if (req.query.endDate) filter.submittedAt.$lte = new Date(req.query.endDate);
+      if (req.query.startDate) {
+        filter.submittedAt.$gte = new Date(req.query.startDate);
+      }
+      if (req.query.endDate) {
+        const endDateTime = new Date(req.query.endDate);
+        endDateTime.setHours(23, 59, 59, 999); // End of day
+        filter.submittedAt.$lte = endDateTime;
+      }
     }
+    
+    console.log('Export PPTX filter:', filter);
     const submissions = await Submission.find(filter).sort({ submittedAt: -1 }).lean();
+    console.log(`Found ${submissions.length} submissions for PPTX export`);
     // Group by sessionId + storeId + categoryId
     const sessionMap = {};
     for (const sub of submissions) {
