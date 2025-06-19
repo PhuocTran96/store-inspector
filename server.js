@@ -338,6 +338,115 @@ async function migrateCategoriesFromCSVToMongoDB() {
   }
 }
 
+// Plan Visit Model for MCP compliance checking
+const planVisitSchema = new mongoose.Schema({}, {
+  strict: false,
+  collection: 'plan_visit'
+});
+
+// Connect to the project_display_app database for plan visits
+const planVisitConnection = mongoose.createConnection(process.env.MONGODB_URI?.replace(/\/[^\/]*$/, '/project_display_app') || 'mongodb://localhost:27017/project_display_app', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+});
+
+const PlanVisit = planVisitConnection.model('plan_visit', planVisitSchema);
+
+// Function to check MCP visit plan compliance
+async function checkMCPCompliance(username, storeCode, submissionDate) {
+  try {
+    // Format the submission date to match plan date format
+    const submissionDateStr = submissionDate.toISOString().split('T')[0];
+    
+    console.log(`🔍 Checking MCP compliance for:`, {
+      username,
+      storeCode,
+      submissionDate: submissionDateStr
+    });    // Look for a plan visit record for this user, store, and date
+    const planVisit = await PlanVisit.findOne({
+      username: { $regex: new RegExp(`^${username}$`, 'i') }, // Case-insensitive match
+      $and: [
+        {
+          $or: [
+            { storeCode: { $regex: new RegExp(`^${storeCode}$`, 'i') } }, // String match
+            { storeCode: parseInt(storeCode) }, // Number match
+            { storeCode: storeCode } // Exact match
+          ]
+        },
+        {
+          $or: [
+            { Date: { $gte: new Date(submissionDateStr), $lt: new Date(submissionDateStr + 'T23:59:59.999Z') } },
+            { date: { $gte: new Date(submissionDateStr), $lt: new Date(submissionDateStr + 'T23:59:59.999Z') } },
+            { visitDate: { $gte: new Date(submissionDateStr), $lt: new Date(submissionDateStr + 'T23:59:59.999Z') } }
+          ]
+        }
+      ]
+    }).lean();
+    
+    console.log(`📋 Plan visit found:`, planVisit ? 'YES' : 'NO');
+    if (planVisit) {
+      console.log(`✅ Plan visit details:`, JSON.stringify(planVisit, null, 2));
+    } else {
+      // Debug: Check if user exists at all
+      const userExists = await PlanVisit.findOne({
+        username: { $regex: new RegExp(`^${username}$`, 'i') }
+      }).lean();
+      console.log(`👤 User '${username}' has any plans:`, userExists ? 'YES' : 'NO');
+        // Debug: Check if store exists at all
+      const storeExists = await PlanVisit.findOne({
+        $or: [
+          { storeCode: { $regex: new RegExp(`^${storeCode}$`, 'i') } },
+          { storeCode: parseInt(storeCode) },
+          { storeCode: storeCode }
+        ]
+      }).lean();
+      console.log(`🏪 Store '${storeCode}' has any plans:`, storeExists ? 'YES' : 'NO');
+      
+      // Debug: Check if user + store combo exists for any date
+      const userStoreExists = await PlanVisit.findOne({
+        username: { $regex: new RegExp(`^${username}$`, 'i') },
+        $or: [
+          { storeCode: { $regex: new RegExp(`^${storeCode}$`, 'i') } },
+          { storeCode: parseInt(storeCode) },
+          { storeCode: storeCode }
+        ]
+      }).lean();
+      console.log(`🎯 User + Store combo exists:`, userStoreExists ? 'YES' : 'NO');
+      if (userStoreExists) {
+        console.log(`📅 Planned date:`, userStoreExists.Date || userStoreExists.date);
+      }
+    }
+    
+    return planVisit !== null;
+  } catch (error) {
+    console.warn(`Warning: Error checking MCP compliance for ${username}:`, error.message);
+    return false; // Default to non-compliant if there's an error
+  }
+}
+
+// Function to get overall MCP compliance for a user
+async function getUserMCPCompliance(username, submissions) {
+  try {
+    let compliantVisits = 0;
+    let totalVisits = 0;
+    
+    // Check each submission
+    for (const submission of submissions) {
+      totalVisits++;
+      const isCompliant = await checkMCPCompliance(username, submission.storeId, submission.submittedAt);
+      if (isCompliant) {
+        compliantVisits++;
+      }
+    }
+    
+    // If all visits are compliant, return "Yes", otherwise "No"
+    return totalVisits > 0 && compliantVisits === totalVisits ? 'Yes' : 'No';
+  } catch (error) {
+    console.warn(`Warning: Error getting MCP compliance for ${username}:`, error.message);
+    return 'No'; // Default to non-compliant if there's an error
+  }
+}
+
 // Routes
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -1662,9 +1771,28 @@ app.get('/api/admin/export-pptx', requireAdmin, async (req, res) => {
       background: { fill: 'E6F2FF' }, // Light blue background
       objects: []
     });    // Create slides for each store
-    Object.values(storeMap).forEach(({ storeMeta, storeInfo, sessions }) => {
+    for (const { storeMeta, storeInfo, sessions } of Object.values(storeMap)) {
       // Create store information slide first
       const storeInfoSlide = pptx.addSlide({ masterName: 'STORE_INFO_LAYOUT' });
+      
+      // Check MCP compliance for this store
+      let mcpCompliance = 'N/A';
+      try {
+        // Get all submissions for this store to check compliance
+        const allSubmissionsForStore = [];
+        sessions.forEach(({ before, after }) => {
+          allSubmissionsForStore.push(...before, ...after);
+        });
+        
+        if (allSubmissionsForStore.length > 0) {
+          // Use the username from the first submission
+          const username = allSubmissionsForStore[0].username;
+          mcpCompliance = await getUserMCPCompliance(username, allSubmissionsForStore);
+        }
+      } catch (error) {
+        console.warn('Error checking MCP compliance:', error.message);
+        mcpCompliance = 'N/A';
+      }
         // Store information in two columns
       const startY = 0.3; // Starting Y position
       const rowHeight = 0.8; // Height between rows
@@ -1689,14 +1817,17 @@ app.get('/api/admin/export-pptx', requireAdmin, async (req, res) => {
         bold: true,
         color: '1F4E79', // Dark blue color for better contrast on light blue background
         align: 'left'
-      };
-
-      // Count "Chưa fix" (not fixed) responses for this store
+      };      // Count "Chưa fix" (not fixed) responses and collect category names for this store
       let unfixedCount = 0;
+      const unfixedCategories = [];
       sessions.forEach(({ after }) => {
         after.forEach(submission => {
           if (submission.fixed === false) {
             unfixedCount++;
+            // Add category name to the list if not already present
+            if (!unfixedCategories.includes(submission.categoryName)) {
+              unfixedCategories.push(submission.categoryName);
+            }
           }
         });
       });
@@ -1746,13 +1877,34 @@ app.get('/api/admin/export-pptx', requireAdmin, async (req, res) => {
       storeInfoSlide.addText(`Submitted: ${formatDateForStore(storeMeta.submittedAt)}`, {
         ...col1Props,
         y: startY + (rowHeight * 5)
-      });
-
-      // COLUMN 2 - Right side
+      });      // COLUMN 2 - Right side
       // Row 1 of Column 2: Unfixed POSM/Shelves count
       storeInfoSlide.addText(`Có lỗi POSM/Quầy kệ không: ${unfixedCount}`, {
         ...col2Props,
         y: startY
+      });      // If there are unfixed categories, list them below the count
+      if (unfixedCategories.length > 0) {
+        const categoryText = unfixedCategories.map(cat => `• ${cat}`).join('\n');
+        
+        storeInfoSlide.addText(`Danh mục chưa fix:\n${categoryText}`, {
+          ...col2Props,
+          y: startY + rowHeight, // Position below the count
+          h: rowHeight * 3, // Reduce height to make room for MCP compliance
+          fontSize: 14, // Smaller font size for the list
+          bold: false, // Make it not bold to differentiate from the main text
+          valign: 'top' // Align text to top of the text box
+        });
+      }
+
+      // Add MCP compliance status at the bottom of column 2
+      const mcpComplianceY = unfixedCategories.length > 0 ? startY + (rowHeight * 4.5) : startY + rowHeight;
+      storeInfoSlide.addText(`Có đi đúng MCP không? ${mcpCompliance}`, {
+        ...col2Props,
+        y: mcpComplianceY,
+        h: 0.6,
+        fontSize: 16,
+        bold: true,
+        color: mcpCompliance === 'Yes' ? '00B050' : 'FF0000' // Green for Yes, Red for No/N/A
       });
 
       // Now create submission slides for this store
@@ -1813,8 +1965,7 @@ app.get('/api/admin/export-pptx', requireAdmin, async (req, res) => {
       // Always 4 images for after grid
       let afterImgs = after.flatMap(sub => sub.images || []);
       while (afterImgs.length < 4) afterImgs.push(placeholderPath);
-      afterImgs = afterImgs.slice(0, 4);
-      afterImgs.forEach((img, idx) => {
+      afterImgs = afterImgs.slice(0, 4);      afterImgs.forEach((img, idx) => {
         const row = Math.floor(idx / 2);
         const col = idx % 2;
         slide.addImage({
@@ -1823,9 +1974,10 @@ app.get('/api/admin/export-pptx', requireAdmin, async (req, res) => {
           y: rightStartY + row * (imgH + gapY),
           w: imgW,
           h: imgH
-        });      });
+        });
+      });
       }); // Close sessions.forEach
-    }); // Close Object.values(storeMap).forEach
+    } // Close for...of Object.values(storeMap)
     
     const buf = await pptx.write('nodebuffer');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');

@@ -6,11 +6,12 @@
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=8.0.0"
-  },
-  "scripts": {
+  },  "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "heroku-postbuild": "echo 'Build completed successfully'"
+    "heroku-postbuild": "echo 'Build completed successfully'",
+    "upload-plan-visit": "node upload-plan-visit-enhanced.js",
+    "upload-plan-visit-file": "node upload-plan-visit-enhanced.js"
   },
   "dependencies": {
     "aws-sdk": "^2.1692.0",
