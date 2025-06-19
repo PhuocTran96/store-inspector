@@ -1657,7 +1657,52 @@ app.get('/api/admin/export', requireAdmin, async (req, res) => {
       console.log('No submissions found matching the filter criteria');
     }
 
+    // Initialize workbook before adding any worksheet
     const workbook = new ExcelJS.Workbook();
+
+    // --- BEGIN: Add Summary Sheet ---
+    // 1. Get all users (excluding Admins)
+    const allUsers = await User.find({ role: { $ne: 'Admin' } }).lean();
+    // 2. For each user, calculate target_mcp and actual_mcp
+    const summaryRows = [];
+    for (const user of allUsers) {
+      // Target MCP: sum of 'Value' in plan_visit for this user (case-sensitive)
+      let targetMcp = 0;
+      try {
+        const planVisits = await PlanVisit.find({ username: user.username });
+        targetMcp = planVisits.reduce((sum, pv) => sum + (typeof pv.Value === 'number' ? pv.Value : 0), 0);
+      } catch (e) {
+        console.warn(`Error getting plan_visit for user ${user.username}:`, e.message);
+      }
+      // Actual MCP: count unique (storeId, date) pairs in Submission for this user
+      let actualMcp = 0;
+      try {
+        const agg = await Submission.aggregate([
+          { $match: { username: user.username } },
+          { $project: {
+              storeId: 1,
+              date: { $dateToString: { format: "%Y-%m-%d", date: "$submittedAt" } }
+            }
+          },
+          { $group: { _id: { storeId: "$storeId", date: "$date" } } },
+          { $count: "count" }
+        ]);
+        actualMcp = agg.length > 0 ? agg[0].count : 0;
+      } catch (e) {
+        console.warn(`Error getting actual MCP for user ${user.username}:`, e.message);
+      }
+      summaryRows.push({ username: user.username, target_mcp: targetMcp, actual_mcp: actualMcp });
+    }
+    // Add the summary worksheet
+    const summarySheet = workbook.addWorksheet('Summary');
+    summarySheet.columns = [
+      { header: 'Username', key: 'username', width: 20 },
+      { header: 'Target MCP', key: 'target_mcp', width: 15 },
+      { header: 'Actual MCP', key: 'actual_mcp', width: 15 }
+    ];
+    summaryRows.forEach(row => summarySheet.addRow(row));
+    // --- END: Add Summary Sheet ---
+
     const worksheet = workbook.addWorksheet('Submissions');worksheet.columns = [
       { header: 'Username', key: 'username', width: 15 },
       { header: 'TDS Name', key: 'tdsName', width: 20 },
