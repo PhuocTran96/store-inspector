@@ -1615,11 +1615,37 @@ app.get('/api/admin/export', requireAdmin, async (req, res) => {
         const endDateTime = new Date(req.query.endDate);
         endDateTime.setHours(23, 59, 59, 999); // End of day
         filter.submittedAt.$lte = endDateTime;
-      }    }
-    
-    console.log('Export filter:', filter);
+      }    }    console.log('Export filter:', filter);
     const submissions = await Submission.find(filter).sort({ submittedAt: -1 }).lean();
     console.log(`Found ${submissions.length} submissions for Excel export`);
+    
+    // Group submissions by username and storeId for MCP compliance checking
+    console.log('Calculating MCP compliance for submissions...');
+    const submissionGroups = {};
+    submissions.forEach(sub => {
+      const key = `${sub.username}|${sub.storeId}`;
+      if (!submissionGroups[key]) {
+        submissionGroups[key] = {
+          username: sub.username,
+          storeId: sub.storeId,
+          submissions: []
+        };
+      }
+      submissionGroups[key].submissions.push(sub);
+    });
+
+    // Calculate MCP compliance for each group
+    const complianceMap = {};
+    for (const [key, group] of Object.entries(submissionGroups)) {
+      try {
+        const isCompliant = await checkMCPCompliance(group.username, group.storeId, group.submissions[0].submittedAt);
+        complianceMap[key] = isCompliant ? 'Yes' : 'No';
+        console.log(`MCP Compliance for ${group.username} at store ${group.storeId}: ${complianceMap[key]}`);
+      } catch (error) {
+        console.error(`Error calculating MCP compliance for ${key}:`, error);
+        complianceMap[key] = 'N/A';
+      }
+    }
     
     // Debug: Log some sample submission dates if any exist
     if (submissions.length > 0) {
@@ -1630,8 +1656,9 @@ app.get('/api/admin/export', requireAdmin, async (req, res) => {
     } else {
       console.log('No submissions found matching the filter criteria');
     }
+
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Submissions');    worksheet.columns = [
+    const worksheet = workbook.addWorksheet('Submissions');worksheet.columns = [
       { header: 'Username', key: 'username', width: 15 },
       { header: 'TDS Name', key: 'tdsName', width: 20 },
       { header: 'Store Name', key: 'storeName', width: 30 },
@@ -1640,7 +1667,8 @@ app.get('/api/admin/export', requireAdmin, async (req, res) => {
       { header: 'Note', key: 'note', width: 30 },
       { header: 'Fixed Status', key: 'fixedStatus', width: 15 },
       { header: 'Images', key: 'images', width: 50 },
-      { header: 'Date', key: 'submittedAt', width: 20 }
+      { header: 'Date', key: 'submittedAt', width: 20 },
+      { header: 'MCP Compliance', key: 'mcpCompliance', width: 15 }
     ];    submissions.forEach(sub => {
       // Format the fixed status for display
       let fixedStatus = '';
@@ -1655,7 +1683,11 @@ app.get('/api/admin/export', requireAdmin, async (req, res) => {
       } else {
         fixedStatus = '0';
       }
-      
+
+      // Get MCP compliance for this submission's user-store combination
+      const complianceKey = `${sub.username}|${sub.storeId}`;
+      const mcpCompliance = complianceMap[complianceKey];
+
       worksheet.addRow({
         username: sub.username || '',
         tdsName: sub.tdsName || '',
@@ -1665,7 +1697,8 @@ app.get('/api/admin/export', requireAdmin, async (req, res) => {
         note: sub.note || '',
         fixedStatus: fixedStatus,
         images: (sub.images || []).join(', '),
-        submittedAt: sub.submittedAt ? new Date(sub.submittedAt).toLocaleString('vi-VN') : ''
+        submittedAt: sub.submittedAt ? new Date(sub.submittedAt).toLocaleString('vi-VN') : '',
+        mcpCompliance: mcpCompliance || 'N/A'
       });
     });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
