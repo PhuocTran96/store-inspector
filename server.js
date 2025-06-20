@@ -668,19 +668,22 @@ app.post('/api/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 
-  console.log(`Tìm thấy user: ${user.Username}, Role: ${user.Role}, User ID: ${user['User ID']}`);  // For demo purposes, we'll use simple password comparison
-  // In production, use proper password hashing
-  if (user.Password === password) {
+  console.log(`Tìm thấy user: ${user.Username}, Role: ${user.Role}, User ID: ${user['User ID']}`);
+  // Use bcrypt to compare password
+  const isMatch = await bcrypt.compare(password, user.Password);
+  if (isMatch) {
     req.session.user = {
       id: user['User ID'].trim(),
-      userId: user['User ID'].trim(), // Add for consistency
+      userId: user['User ID'].trim(),
       username: user.Username ? user.Username.trim() : '',
-      tdsName: user['TDS name'] ? user['TDS name'].trim() : '', // Keep for compatibility
+      tdsName: user['TDS name'] ? user['TDS name'].trim() : '',
       role: user.Role ? user.Role.trim() : ''
     };
-    
-    console.log('Đăng nhập thành công, session user:', req.session.user);
-    res.json({ success: true, user: req.session.user });
+    // Find the user in MongoDB to check mustChangePassword
+    const dbUser = await User.findOne({ userId: user['User ID'].trim() });
+    const mustChangePassword = dbUser && dbUser.mustChangePassword === true;
+    console.log('Đăng nhập thành công, session user:', req.session.user, 'mustChangePassword:', mustChangePassword);
+    res.json({ success: true, user: req.session.user, mustChangePassword });
   } else {
     console.log('Password không khớp');
     res.status(401).json({ error: 'Invalid credentials' });
@@ -688,9 +691,12 @@ app.post('/api/login', async (req, res) => {
 });
 
 // Check session API
-app.get('/api/check-session', (req, res) => {
+app.get('/api/check-session', async (req, res) => {
   if (req.session.user) {
-    res.json({ success: true, user: req.session.user });
+    // Find the user in MongoDB to check mustChangePassword
+    const dbUser = await User.findOne({ userId: req.session.user.userId });
+    const mustChangePassword = dbUser && dbUser.mustChangePassword === true;
+    res.json({ success: true, user: req.session.user, mustChangePassword });
   } else {
     res.status(401).json({ error: 'Not authenticated' });
   }
@@ -716,7 +722,8 @@ app.post('/api/change-password', async (req, res) => {
     }
 
     // Update password in MongoDB
-    user.password = newPassword;
+    user.password = await bcrypt.hash(String(newPassword), 10);
+    user.mustChangePassword = false;
     await user.save();
       // Also update in memory array for compatibility
     const userIndex = usersData.findIndex(u => u['User ID'] && u['User ID'].trim() === userId.trim());
@@ -1041,23 +1048,23 @@ app.get('/api/template/users-sample', async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Users Data');
     
-    // Use the exact field names that the database expects
+    // Use the exact field names and order that the import expects
     worksheet.columns = [
       { header: 'username', key: 'username', width: 20 },
       { header: 'userId', key: 'userId', width: 15 },
       { header: 'role', key: 'role', width: 15 },
-      { header: 'status', key: 'status', width: 10 },
-      { header: 'createdAt', key: 'createdAt', width: 20 }
+      { header: 'password', key: 'password', width: 15 },
+      { header: 'status', key: 'status', width: 10 }
     ];
     
-    // Add all actual user data
+    // Add all actual user data, password is left empty
     users.forEach(user => {
       worksheet.addRow({
         username: user.username || '',
         userId: user.userId || '',
         role: user.role || '',
-        status: user.status || 'active',
-        createdAt: user.createdAt ? new Date(user.createdAt).toISOString().split('T')[0] : ''
+        password: '',
+        status: user.status || 'active'
       });
     });
     
@@ -1386,7 +1393,7 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
     }
     
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(String(password), 10);
     
     // Create new user
     const newUser = new User({
@@ -1663,45 +1670,218 @@ app.get('/api/admin/export', requireAdmin, async (req, res) => {
     // --- BEGIN: Add Summary Sheet ---
     // 1. Get all users (excluding Admins)
     const allUsers = await User.find({ role: { $ne: 'Admin' } }).lean();
-    // 2. For each user, calculate target_mcp and actual_mcp
+
+    // Determine the month to process (from filter, or current month)
+    let month, year;
+    if (req.query.startDate) {
+      const d = new Date(req.query.startDate);
+      month = d.getMonth(); // 0-based
+      year = d.getFullYear();
+    } else {
+      const now = new Date();
+      month = now.getMonth();
+      year = now.getFullYear();
+    }
+    // Get number of days in the month
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    // 2. For each user, calculate all summary fields
     const summaryRows = [];
     for (const user of allUsers) {
       // Target MCP: sum of 'Value' in plan_visit for this user (case-sensitive)
       let targetMcp = 0;
+      let totalStores = 0;
       try {
         const planVisits = await PlanVisit.find({ username: user.username });
         targetMcp = planVisits.reduce((sum, pv) => sum + (typeof pv.Value === 'number' ? pv.Value : 0), 0);
+        // Total stores: unique storeCode in planVisits
+        const storeSet = new Set(planVisits.map(pv => pv.storeCode?.toString()));
+        storeSet.delete(undefined); storeSet.delete(null);
+        totalStores = storeSet.size;
       } catch (e) {
         console.warn(`Error getting plan_visit for user ${user.username}:`, e.message);
       }
       // Actual MCP: count unique (storeId, date) pairs in Submission for this user
+      // Actual stores: unique storeId in Submission
       let actualMcp = 0;
+      let actualStores = 0;
+      let dayStoreMap = {};
       try {
-        const agg = await Submission.aggregate([
-          { $match: { username: user.username } },
-          { $project: {
-              storeId: 1,
-              date: { $dateToString: { format: "%Y-%m-%d", date: "$submittedAt" } }
-            }
-          },
-          { $group: { _id: { storeId: "$storeId", date: "$date" } } },
-          { $count: "count" }
-        ]);
-        actualMcp = agg.length > 0 ? agg[0].count : 0;
+        // Only consider submissions in the filtered month
+        const monthStart = new Date(year, month, 1);
+        const monthEnd = new Date(year, month, daysInMonth, 23, 59, 59, 999);
+        const submissions = await Submission.find({
+          username: user.username,
+          submittedAt: { $gte: monthStart, $lte: monthEnd }
+        }).lean();
+        // Actual MCP: unique (storeId, date) pairs
+        const mcpSet = new Set();
+        // Actual stores: unique storeId
+        const storeSet = new Set();
+        // Day store map: day (1-31) -> Set of storeIds
+        for (const sub of submissions) {
+          const d = new Date(sub.submittedAt);
+          const day = d.getDate();
+          const storeId = sub.storeId?.toString();
+          if (storeId) {
+            mcpSet.add(`${storeId}|${d.toISOString().slice(0,10)}`);
+            storeSet.add(storeId);
+            if (!dayStoreMap[day]) dayStoreMap[day] = new Set();
+            dayStoreMap[day].add(storeId);
+          }
+        }
+        actualMcp = mcpSet.size;
+        actualStores = storeSet.size;
       } catch (e) {
-        console.warn(`Error getting actual MCP for user ${user.username}:`, e.message);
+        console.warn(`Error getting actual MCP/stores for user ${user.username}:`, e.message);
       }
-      summaryRows.push({ username: user.username, target_mcp: targetMcp, actual_mcp: actualMcp });
+      // Build row
+      const row = {
+        username: user.username,
+        role: user.role,
+        target_mcp: targetMcp,
+        actual_mcp: actualMcp,
+        total_stores: totalStores,
+        actual_stores: actualStores
+      };
+      // Add columns 1-31
+      for (let day = 1; day <= daysInMonth; ++day) {
+        row[day] = dayStoreMap[day] ? dayStoreMap[day].size : 0;
+      }
+      summaryRows.push(row);
     }
     // Add the summary worksheet
     const summarySheet = workbook.addWorksheet('Summary');
-    summarySheet.columns = [
+    // Build columns
+    const summaryColumns = [
       { header: 'Username', key: 'username', width: 20 },
-      { header: 'Target MCP', key: 'target_mcp', width: 15 },
-      { header: 'Actual MCP', key: 'actual_mcp', width: 15 }
+      { header: 'Role', key: 'role', width: 10 },
+      { header: 'Target MCP', key: 'target_mcp', width: 12 },
+      { header: 'Actual MCP', key: 'actual_mcp', width: 12 },
+      { header: 'Total stores', key: 'total_stores', width: 12 },
+      { header: 'Actual stores', key: 'actual_stores', width: 12 }
     ];
+    for (let day = 1; day <= daysInMonth; ++day) {
+      summaryColumns.push({ header: day.toString(), key: day.toString(), width: 4 });
+    }
+    summarySheet.columns = summaryColumns;
     summaryRows.forEach(row => summarySheet.addRow(row));
     // --- END: Add Summary Sheet ---
+
+    // --- BEGIN: Add MCP Compliance Tables ---
+    // Helper to build a summary row for a user given a set of submissions
+    function buildSummaryRow(user, planVisits, submissions, daysInMonth, year, month) {
+      // Target MCP and total stores from planVisits
+      const targetMcp = planVisits.reduce((sum, pv) => sum + (typeof pv.Value === 'number' ? pv.Value : 0), 0);
+      const planStoreSet = new Set(planVisits.map(pv => pv.storeCode?.toString()));
+      planStoreSet.delete(undefined); planStoreSet.delete(null);
+      const totalStores = planStoreSet.size;
+      // Actual MCP: unique (storeId, date) pairs
+      const mcpSet = new Set();
+      // Actual stores: unique storeId
+      const storeSet = new Set();
+      // Day store map: day (1-31) -> Set of storeIds
+      const dayStoreMap = {};
+      for (const sub of submissions) {
+        const d = new Date(sub.submittedAt);
+        const day = d.getDate();
+        const storeId = sub.storeId?.toString();
+        if (storeId) {
+          mcpSet.add(`${storeId}|${d.toISOString().slice(0,10)}`);
+          storeSet.add(storeId);
+          if (!dayStoreMap[day]) dayStoreMap[day] = new Set();
+          dayStoreMap[day].add(storeId);
+        }
+      }
+      const row = {
+        username: user.username,
+        role: user.role,
+        target_mcp: targetMcp,
+        actual_mcp: mcpSet.size,
+        total_stores: totalStores,
+        actual_stores: storeSet.size
+      };
+      for (let day = 1; day <= daysInMonth; ++day) {
+        row[day] = dayStoreMap[day] ? dayStoreMap[day].size : 0;
+      }
+      return row;
+    }
+
+    // Get all planVisits for all users (to avoid repeated queries)
+    const allPlanVisits = await PlanVisit.find({ username: { $in: allUsers.map(u => u.username) } }).lean();
+    // Get all submissions for the filtered month for all users
+    const monthStart = new Date(year, month, 1);
+    const monthEnd = new Date(year, month, daysInMonth, 23, 59, 59, 999);
+    const allMonthSubs = await Submission.find({
+      username: { $in: allUsers.map(u => u.username) },
+      submittedAt: { $gte: monthStart, $lte: monthEnd }
+    }).lean();
+    // Build a map of compliance for each submission
+    const complianceMapMCP = {};
+    for (const sub of allMonthSubs) {
+      const key = `${sub.username}|${sub.storeId}|${sub.submittedAt.toISOString().slice(0,10)}`;
+      // Use your checkMCPCompliance function for each submission
+      complianceMapMCP[key] = await checkMCPCompliance(sub.username, sub.storeId, sub.submittedAt) ? 'Yes' : 'No';
+    }
+    // Group submissions by user and compliance
+    const userSubsMap = {};
+    for (const user of allUsers) {
+      userSubsMap[user.username] = {
+        all: [],
+        yes: [],
+        no: []
+      };
+    }
+    for (const sub of allMonthSubs) {
+      const user = sub.username;
+      userSubsMap[user].all.push(sub);
+      const key = `${sub.username}|${sub.storeId}|${sub.submittedAt.toISOString().slice(0,10)}`;
+      if (complianceMapMCP[key] === 'Yes') userSubsMap[user].yes.push(sub);
+      if (complianceMapMCP[key] === 'No') userSubsMap[user].no.push(sub);
+    }
+    // Group planVisits by user
+    const userPlanMap = {};
+    for (const user of allUsers) {
+      userPlanMap[user.username] = allPlanVisits.filter(pv => pv.username === user.username);
+    }
+    // Build rows for each block
+    // 1. All users (already done: summaryRows)
+    // 2. Following MCP compliance
+    const followingRows = [];
+    for (const user of allUsers) {
+      if (userSubsMap[user.username].yes.length > 0) {
+        followingRows.push(buildSummaryRow(user, userPlanMap[user.username], userSubsMap[user.username].yes, daysInMonth, year, month));
+      }
+    }
+    // 3. Not following MCP compliance
+    const notFollowingRows = [];
+    for (const user of allUsers) {
+      if (userSubsMap[user.username].no.length > 0) {
+        notFollowingRows.push(buildSummaryRow(user, userPlanMap[user.username], userSubsMap[user.username].no, daysInMonth, year, month));
+      }
+    }
+    // Write to the same worksheet, one block after another
+    let rowOffset = summaryRows.length + 3; // leave a blank row
+    // Write header for block 2
+    summarySheet.getRow(rowOffset).values = ['Following MCP compliance'];
+    rowOffset++;
+    summarySheet.getRow(rowOffset).values = summarySheet.columns.map(col => col.header);
+    rowOffset++;
+    followingRows.forEach(row => {
+      summarySheet.insertRow(rowOffset, summarySheet.columns.map(col => row[col.key]));
+      rowOffset++;
+    });
+    rowOffset++; // blank row
+    // Write header for block 3
+    summarySheet.getRow(rowOffset).values = ['Not following MCP compliance'];
+    rowOffset++;
+    summarySheet.getRow(rowOffset).values = summarySheet.columns.map(col => col.header);
+    rowOffset++;
+    notFollowingRows.forEach(row => {
+      summarySheet.insertRow(rowOffset, summarySheet.columns.map(col => row[col.key]));
+      rowOffset++;
+    });
+    // --- END: Add MCP Compliance Tables ---
 
     const worksheet = workbook.addWorksheet('Submissions');worksheet.columns = [
       { header: 'Username', key: 'username', width: 15 },
@@ -2067,6 +2247,130 @@ app.get('/api/admin/export-pptx', requireAdmin, async (req, res) => {
   }
 });
 
+// Upload and process users template
+app.post('/api/template/upload-users', fileUpload.single('usersFile'), requireAdmin, async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  try {
+    const filePath = req.file.path;
+    const ext = filePath.split('.').pop().toLowerCase();
+    let users = [];
+    if (ext === 'xlsx') {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(filePath);
+      const worksheet = workbook.worksheets[0];
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return; // skip header
+        const values = row.values;
+        users.push({
+          username: values[1],
+          userId: values[2],
+          role: values[3],
+          password: values[4],
+          status: values[5] || 'active'
+        });
+      });
+    } else {
+      return res.status(400).json({ error: 'Please upload an Excel (.xlsx) file.' });
+    }
+    if (users.length === 0) {
+      return res.status(400).json({ error: 'No valid user data found in file.' });
+    }
+    let upserted = 0;
+    for (const user of users) {
+      if (!user.username || !user.userId || !user.role || !user.password) continue;
+      const hashedPassword = await bcrypt.hash(String(user.password), 10);
+      await User.findOneAndUpdate(
+        { userId: user.userId },
+        { $set: { ...user, password: hashedPassword, mustChangePassword: true } },
+        { upsert: true, new: true }
+      );
+      upserted++;
+    }
+    await loadData();
+    fs.unlinkSync(filePath);
+    res.json({ success: true, message: `Successfully processed ${upserted} users`, count: upserted });
+  } catch (error) {
+    console.error('Upload users error:', error);
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: 'Failed to process users file' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+});
+
+// --- MCP (Visit Plan) Template Export ---
+app.get('/api/template/mcp-sample', requireAdmin, async (req, res) => {
+  try {
+    const planVisits = await PlanVisit.find({}).lean();
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('MCP Data');
+    worksheet.columns = [
+      { header: 'username', key: 'username', width: 20 },
+      { header: 'storeCode', key: 'storeCode', width: 15 },
+      { header: 'Date', key: 'Date', width: 12 },
+      { header: 'Value', key: 'Value', width: 8 },
+    ];
+    planVisits.forEach(row => {
+      worksheet.addRow({
+        username: row.username || '',
+        storeCode: row.storeCode || '',
+        Date: row.Date ? new Date(row.Date).toISOString().slice(0, 10) : '',
+        Value: row.Value || '',
+      });
+    });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="mcp-sample.xlsx"');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- MCP (Visit Plan) Template Import ---
+app.post('/api/template/upload-mcp', requireAdmin, fileUpload.single('mcpFile'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  try {
+    const filePath = req.file.path;
+    const ext = filePath.split('.').pop().toLowerCase();
+    let imported = 0;
+    if (ext === 'xlsx') {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(filePath);
+      const worksheet = workbook.worksheets[0];
+      const rows = [];
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return; // skip header
+        const values = row.values;
+        rows.push({
+          username: values[1],
+          storeCode: values[2],
+          Date: values[3],
+          Value: values[4],
+        });
+      });
+      for (const row of rows) {
+        if (!row.username || !row.storeCode || !row.Date) continue;
+        // Only keep date part for Date
+        const dateOnly = row.Date ? new Date(row.Date).toISOString().slice(0, 10) : '';
+        await PlanVisit.findOneAndUpdate(
+          { username: row.username, storeCode: row.storeCode, Date: dateOnly },
+          { $set: { username: row.username, storeCode: row.storeCode, Date: dateOnly, Value: row.Value } },
+          { upsert: true, new: true }
+        );
+        imported++;
+      }
+    }
+    res.json({ success: true, imported });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });

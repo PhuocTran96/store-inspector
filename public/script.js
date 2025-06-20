@@ -144,42 +144,214 @@ class App {
         this.bindEvents();
         this.setupSessionPersistence();
         this.checkAuthStatus();
-    }    bindEvents() {
+    }
+
+    bindEvents() {
         // Login
-        document.getElementById('loginForm').addEventListener('submit', this.handleLogin.bind(this));
-        
+        const loginForm = document.getElementById('loginForm');
+        if (loginForm) {
+            loginForm.addEventListener('submit', this.handleLogin.bind(this));
+        }
         // Change password
-        document.getElementById('changePasswordBtn').addEventListener('click', this.showChangePassword.bind(this));
-        document.getElementById('backToLoginBtn').addEventListener('click', this.showLogin.bind(this));
-        document.getElementById('changePasswordForm').addEventListener('submit', this.handleChangePassword.bind(this));
-        document.getElementById('loadUserInfoBtn').addEventListener('click', this.loadUserInfo.bind(this));
-        
+        const changePasswordBtn = document.getElementById('changePasswordBtn');
+        if (changePasswordBtn) {
+            changePasswordBtn.addEventListener('click', this.showChangePassword.bind(this));
+        }
+        const backToLoginBtn = document.getElementById('backToLoginBtn');
+        if (backToLoginBtn) {
+            backToLoginBtn.addEventListener('click', this.showLogin.bind(this));
+        }
+        const changePasswordForm = document.getElementById('changePasswordForm');
+        if (changePasswordForm) {
+            changePasswordForm.addEventListener('submit', this.handleChangePassword.bind(this));
+        }
+        const loadUserInfoBtn = document.getElementById('loadUserInfoBtn');
+        if (loadUserInfoBtn) {
+            loadUserInfoBtn.addEventListener('click', this.loadUserInfo.bind(this));
+        }
         // Navigation
-        document.getElementById('logoutBtn').addEventListener('click', this.handleLogout.bind(this));        document.getElementById('backToStoresBtn').addEventListener('click', (e) => {
-            console.log('🔙 Back to stores button clicked');
-            e.preventDefault(); // Prevent any default behavior
-            e.stopPropagation(); // Stop event bubbling
-            this.handleBackToStores();
-        });
-        document.getElementById('backToStoresFromAdminBtn').addEventListener('click', this.showStores.bind(this));
-        document.getElementById('historyBtn')?.addEventListener('click', this.showHistory.bind(this));
-          // Submit
-        document.getElementById('submitBtn').addEventListener('click', this.handleSubmitClick.bind(this));
-        document.getElementById('proceedToAfterBtn')?.addEventListener('click', this.proceedToAfterStep.bind(this));
-        document.getElementById('backToBeforeBtn')?.addEventListener('click', this.backToBeforeStep.bind(this));
-        
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', this.handleLogout.bind(this));
+        }
+        const backToStoresBtn = document.getElementById('backToStoresBtn');
+        if (backToStoresBtn) {
+            backToStoresBtn.addEventListener('click', (e) => {
+                console.log('🔙 Back to stores button clicked');
+                e.preventDefault();
+                e.stopPropagation();
+                this.handleBackToStores();
+            });
+        }
+        const backToStoresFromAdminBtn = document.getElementById('backToStoresFromAdminBtn');
+        if (backToStoresFromAdminBtn) {
+            backToStoresFromAdminBtn.addEventListener('click', this.showStores.bind(this));
+        }
+        const historyBtn = document.getElementById('historyBtn');
+        if (historyBtn) {
+            historyBtn.addEventListener('click', this.showHistory.bind(this));
+        }
+        const submitBtn = document.getElementById('submitBtn');
+        if (submitBtn) {
+            submitBtn.addEventListener('click', this.handleSubmitClick.bind(this));
+        }
+        const proceedToAfterBtn = document.getElementById('proceedToAfterBtn');
+        if (proceedToAfterBtn) {
+            proceedToAfterBtn.addEventListener('click', this.proceedToAfterStep.bind(this));
+        }
+        const backToBeforeBtn = document.getElementById('backToBeforeBtn');
+        if (backToBeforeBtn) {
+            backToBeforeBtn.addEventListener('click', this.backToBeforeStep.bind(this));
+        }
         // Admin
-        document.getElementById('exportBtn').addEventListener('click', this.handleExport.bind(this));
-        
+        const exportBtn = document.getElementById('exportBtn');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', this.handleExport.bind(this));
+        }
         // Store search and filter
-        document.getElementById('storeSearch').addEventListener('input', this.handleStoreSearch.bind(this));
-        document.getElementById('storeSearch').addEventListener('keydown', this.handleSearchKeydown.bind(this));
-        document.getElementById('storeSearch').addEventListener('focus', this.handleSearchFocus.bind(this));
-        document.getElementById('clearFilter').addEventListener('click', this.clearStoreFilter.bind(this));
-        
+        const storeSearch = document.getElementById('storeSearch');
+        if (storeSearch) {
+            storeSearch.addEventListener('input', this.handleStoreSearch.bind(this));
+            storeSearch.addEventListener('keydown', this.handleSearchKeydown.bind(this));
+            storeSearch.addEventListener('focus', this.handleSearchFocus.bind(this));
+        }
+        const clearFilter = document.getElementById('clearFilter');
+        if (clearFilter) {
+            clearFilter.addEventListener('click', this.clearStoreFilter.bind(this));
+        }
         // Close dropdown when clicking outside
         document.addEventListener('click', this.handleClickOutside.bind(this));
-    }    // Screen management
+        // User import
+        const importUsersBtn = document.getElementById('importUsersBtn');
+        const importUsersFileInput = document.getElementById('importUsersFileInput');
+        const importUsersProgress = document.getElementById('importUsersProgress');
+        const importUsersProgressFill = document.getElementById('importUsersProgressFill');
+        const importUsersProgressText = document.getElementById('importUsersProgressText');
+        if (importUsersBtn && importUsersFileInput) {
+            importUsersBtn.addEventListener('click', () => importUsersFileInput.click());
+            importUsersFileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                if (importUsersProgress && importUsersProgressFill && importUsersProgressText) {
+                    importUsersProgress.style.display = 'block';
+                    importUsersProgressFill.style.width = '10%';
+                    importUsersProgressText.textContent = 'Đang tải lên...';
+                }
+                const formData = new FormData();
+                formData.append('usersFile', file);
+                try {
+                    const res = await fetch('/api/template/upload-users', {
+                        method: 'POST',
+                        body: formData,
+                        credentials: 'same-origin'
+                    });
+                    if (res.ok) {
+                        if (importUsersProgressFill && importUsersProgressText && importUsersProgress) {
+                            importUsersProgressFill.style.width = '100%';
+                            importUsersProgressText.textContent = 'Thành công! Đang làm mới danh sách...';
+                            setTimeout(() => {
+                                importUsersProgress.style.display = 'none';
+                                importUsersProgressFill.style.width = '0%';
+                                importUsersProgressText.textContent = '';
+                            }, 1200);
+                        }
+                        this.showToast('Đã import users thành công', 'success');
+                        if (typeof loadUsers === 'function') loadUsers();
+                        else window.location.reload();
+                    } else {
+                        const err = await res.json();
+                        if (importUsersProgressFill && importUsersProgressText) {
+                            importUsersProgressFill.style.width = '0%';
+                            importUsersProgressText.textContent = err.error || 'Lỗi import users';
+                        }
+                        this.showToast(err.error || 'Lỗi import users', 'error');
+                    }
+                } catch (error) {
+                    if (importUsersProgressFill && importUsersProgressText) {
+                        importUsersProgressFill.style.width = '0%';
+                        importUsersProgressText.textContent = 'Lỗi kết nối';
+                    }
+                    this.showToast('Lỗi kết nối', 'error');
+                }
+            });
+        }
+        // Template modal tab switching
+        const tabButtons = document.querySelectorAll('.tab-button');
+        const tabContents = document.querySelectorAll('.tab-content');
+        if (tabButtons.length && tabContents.length) {
+            tabButtons.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    tabButtons.forEach(b => b.classList.remove('active'));
+                    tabContents.forEach(tc => tc.classList.remove('active'));
+                    this.classList.add('active');
+                    const tab = this.getAttribute('data-tab');
+                    document.getElementById(tab + 'Tab').classList.add('active');
+                });
+            });
+        }
+        // MCP import/export logic
+        const mcpFileInput = document.getElementById('mcpFileInput');
+        const mcpDropzone = document.getElementById('mcpDropzone');
+        const uploadMcpBtn = document.getElementById('uploadMcpBtn');
+        const exportMcpBtn = document.getElementById('exportMcpBtn');
+        let mcpFile = null;
+        if (mcpDropzone && mcpFileInput && uploadMcpBtn && exportMcpBtn) {
+            mcpDropzone.addEventListener('click', () => mcpFileInput.click());
+            mcpDropzone.addEventListener('dragover', e => {
+                e.preventDefault();
+                mcpDropzone.classList.add('dragover');
+            });
+            mcpDropzone.addEventListener('dragleave', e => {
+                e.preventDefault();
+                mcpDropzone.classList.remove('dragover');
+            });
+            mcpDropzone.addEventListener('drop', e => {
+                e.preventDefault();
+                mcpDropzone.classList.remove('dragover');
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    mcpFileInput.files = e.dataTransfer.files;
+                    handleMcpFileChange();
+                }
+            });
+            mcpFileInput.addEventListener('change', handleMcpFileChange);
+            function handleMcpFileChange() {
+                mcpFile = mcpFileInput.files[0];
+                uploadMcpBtn.disabled = !mcpFile;
+                mcpDropzone.querySelector('p').textContent = mcpFile ? mcpFile.name : 'Kéo thả file Excel hoặc click để chọn';
+            }
+            uploadMcpBtn.addEventListener('click', async () => {
+                if (!mcpFile) return;
+                uploadMcpBtn.disabled = true;
+                uploadMcpBtn.textContent = 'Đang upload...';
+                try {
+                    const formData = new FormData();
+                    formData.append('mcpFile', mcpFile);
+                    const res = await fetch('/api/template/upload-mcp', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    if (res.ok) {
+                        showToast('Upload MCP thành công!');
+                    } else {
+                        const err = await res.json();
+                        showToast('Lỗi upload MCP: ' + (err.error || 'Unknown error'), 'error');
+                    }
+                } catch (e) {
+                    showToast('Lỗi upload MCP: ' + e.message, 'error');
+                }
+                uploadMcpBtn.disabled = false;
+                uploadMcpBtn.textContent = 'Upload MCP';
+                mcpFileInput.value = '';
+                mcpFile = null;
+                mcpDropzone.querySelector('p').textContent = 'Kéo thả file Excel hoặc click để chọn';
+            });
+            exportMcpBtn.addEventListener('click', () => {
+                window.location.href = '/api/template/mcp-sample';
+            });
+        }
+    }
+
+    // Screen management
     showScreen(screenId) {
         console.log('🖥️ showScreen() called with screenId:', screenId);
         document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
@@ -190,7 +362,9 @@ class App {
         } else {
             console.error('❌ Screen not found:', screenId);
         }
-    }    showLoading(show = true, message = '') {
+    }
+
+    showLoading(show = true, message = '') {
         console.log('⏳ showLoading() called with show:', show, 'message:', message);
         const overlay = document.getElementById('loadingOverlay');
         const loadingText = overlay.querySelector('.loading-text');
@@ -212,7 +386,9 @@ class App {
         setTimeout(() => {
             toast.classList.remove('show');
         }, 3000);
-    }    // Authentication
+    }
+
+    // Authentication
     async checkAuthStatus() {
         try {
             // Check if user is already authenticated
@@ -221,7 +397,13 @@ class App {
                 const data = await response.json();
                 this.currentUser = data.user;
                 console.log('User already authenticated:', this.currentUser);
-                
+                // Enforce mustChangePassword on session restore
+                if (data.mustChangePassword) {
+                    document.getElementById('changePasswordUserIdInput').value = this.currentUser.id;
+                    this.showScreen('changePasswordScreen');
+                    this.showToast('Bạn cần đổi mật khẩu trước khi sử dụng hệ thống.', 'warning');
+                    return;
+                }
                 // Show appropriate screen based on user role
                 if (this.currentUser.role === 'Admin') {
                     this.showAdminOrStores();
@@ -238,7 +420,9 @@ class App {
             // On error, show login screen
             this.showScreen('loginScreen');
         }
-    }async handleLogin(e) {
+    }
+
+    async handleLogin(e) {
         e.preventDefault();
         this.showLoading(true);
 
@@ -263,7 +447,14 @@ class App {
                 this.currentUser = data.user;
                 console.log('Đăng nhập thành công:', this.currentUser);
                 this.showToast('Đăng nhập thành công!', 'success');
-                
+                // If must change password, force change password screen
+                if (data.mustChangePassword) {
+                    // Pre-fill userId for change password
+                    document.getElementById('changePasswordUserIdInput').value = this.currentUser.id;
+                    this.showScreen('changePasswordScreen');
+                    this.showToast('Bạn cần đổi mật khẩu trước khi sử dụng hệ thống.', 'warning');
+                    return;
+                }
                 // Chờ một chút để đảm bảo session được lưu
                 await new Promise(resolve => setTimeout(resolve, 500));
                 
@@ -285,7 +476,9 @@ class App {
         } finally {
             this.showLoading(false);
         }
-    }    showChangePassword() {
+    }
+
+    showChangePassword() {
         // Reset form and hide user info card initially
         document.getElementById('changePasswordForm').reset();
         document.getElementById('userIdGroup').style.display = 'block';
@@ -303,7 +496,9 @@ class App {
         }
         
         this.showScreen('changePasswordScreen');
-    }    showLogin() {
+    }
+
+    showLogin() {
         this.showScreen('loginScreen');
         document.getElementById('changePasswordForm').reset();
         
@@ -313,7 +508,9 @@ class App {
         document.getElementById('changePasswordUsername').textContent = 'Chưa đăng nhập';
         document.getElementById('changePasswordUserId').textContent = 'ID: -';
         document.getElementById('changePasswordRole').textContent = '-';
-    }async handleChangePassword(e) {
+    }
+
+    async handleChangePassword(e) {
         e.preventDefault();
         this.showLoading(true);
 
@@ -381,7 +578,9 @@ class App {
         } else {
             this.loadStores();
         }
-    }    async loadStores() {
+    }
+
+    async loadStores() {
         console.log('📋 loadStores() called');
         this.showLoading(true);
 
@@ -455,7 +654,8 @@ class App {
 
         stores.forEach(store => {
             const storeItem = document.createElement('div');
-            storeItem.className = 'store-item';            storeItem.innerHTML = `
+            storeItem.className = 'store-item';
+            storeItem.innerHTML = `
                 <h3>${store['Store name']}</h3>
                 <p><strong>Địa chỉ:</strong> ${store['Address (No.Street, Ward/District, City, Province/State/Region)'] || 'N/A'}</p>
                 <p style="color: #667eea; font-weight: bold;"><strong>Mã cửa hàng:</strong> ${store['Store code (Fieldcheck)'] || 'N/A'}</p>
@@ -478,7 +678,9 @@ class App {
             adminItem.addEventListener('click', () => this.showScreen('adminScreen'));
             storeList.appendChild(adminItem);
         }
-    }    showStores() {
+    }
+
+    showStores() {
         console.log('🏪 showStores() called');
         // Reset search filter when returning to stores
         const searchInput = document.getElementById('storeSearch');
@@ -490,19 +692,25 @@ class App {
         }
         console.log('🔄 Calling loadStores()...');
         this.loadStores();
-    }async selectStore(store) {
+    }
+
+    async selectStore(store) {
         this.currentStore = store;
         this.sessionId = new Date().toISOString(); // Generate new session ID
         this.currentStep = 'before'; // Start with "before" step
         
         document.getElementById('selectedStoreName').textContent = `${store['Store name']} - Bước 1: Chụp ảnh TRƯỚC cải thiện`;
         await this.loadCategories();
-    }    // New workflow methods
+    }
+
+    // New workflow methods
     showHistory() {
         // Add a referrer parameter to help with navigation
         const historyUrl = `/history.html?ref=stores`;
         window.open(historyUrl, '_blank');
-    }    async proceedToAfterStep() {
+    }
+
+    async proceedToAfterStep() {
         if (this.currentStep !== 'before') return;
         
         try {
@@ -551,7 +759,9 @@ class App {
             console.error('Error proceeding to after step:', error);
             this.showToast(error.message || 'Không thể chuyển sang bước 2', 'error');
         }
-    }async loadBeforeCategories() {
+    }
+
+    async loadBeforeCategories() {
         try {
             const storeId = this.currentStore['Store code (Fieldcheck)'] || this.currentStore.STT;
             console.log(`Loading before categories for store: ${storeId}, sessionId: ${this.sessionId}`);
@@ -575,7 +785,9 @@ class App {
             this.showToast('Không thể tải danh mục đã chụp', 'error');
             throw error; // Re-throw to handle in calling function
         }
-    }    renderAfterCategorySelection() {
+    }
+
+    renderAfterCategorySelection() {
         const categoryList = document.getElementById('categoryList');
         
         // Add error handling for missing element
@@ -654,7 +866,9 @@ class App {
         
         // Show/hide proceed button based on selection
         proceedBtn.style.display = this.selectedAfterCategories.length > 0 ? 'block' : 'none';
-    }    async startAfterPhotos() {
+    }
+
+    async startAfterPhotos() {
         if (this.selectedAfterCategories.length === 0) {
             this.showToast('Vui lòng chọn ít nhất 1 danh mục', 'error');
             return;
@@ -692,7 +906,9 @@ class App {
 
         this.updateSubmitButton();
         this.updateSubmitButton();
-    }    backToBeforeStep() {
+    }
+
+    backToBeforeStep() {
         this.currentStep = 'before';
         this.selectedAfterCategories = [];
         
@@ -742,7 +958,9 @@ class App {
         } finally {
             this.showLoading(false);
         }
-    }    initializeCategoryData() {
+    }
+
+    initializeCategoryData() {
         this.categoryData = {};
         this.categories.forEach(category => {
             this.categoryData[category.ID] = {
@@ -773,7 +991,9 @@ class App {
         });
 
         this.updateSubmitButton();
-    }    getCategoryHTML(category) {
+    }
+
+    getCategoryHTML(category) {
         const data = this.categoryData[category.ID];
         const imageCount = data.images.length;
         
@@ -829,7 +1049,8 @@ class App {
                    onchange="app.handleImageUpload('${category.ID}', this)">
             <input type="file" id="fileInput-${category.ID}" class="hidden-file-input"
                    accept="image/*" multiple
-                   onchange="app.handleImageUpload('${category.ID}', this)">            <div class="image-preview" id="imagePreview-${category.ID}">
+                   onchange="app.handleImageUpload('${category.ID}', this)">
+            <div class="image-preview" id="imagePreview-${category.ID}">
                 ${this.getImagePreviewHTML(data.images, category.ID)}
             </div>
             
@@ -864,7 +1085,9 @@ class App {
 
     triggerFileUpload(categoryId) {
         document.getElementById(`fileInput-${categoryId}`).click();
-    }    async handleImageUpload(categoryId, input) {
+    }
+
+    async handleImageUpload(categoryId, input) {
         const files = Array.from(input.files);
         const data = this.categoryData[categoryId];
         
@@ -924,7 +1147,9 @@ class App {
             
             img.src = URL.createObjectURL(file);
         });
-    }    renderCategoryImages(categoryId) {
+    }
+
+    renderCategoryImages(categoryId) {
         const previewContainer = document.getElementById(`imagePreview-${categoryId}`);
         const data = this.categoryData[categoryId];
         previewContainer.innerHTML = this.getImagePreviewHTML(data.images, categoryId);
@@ -949,7 +1174,9 @@ class App {
                 });
             }
         }
-    }removeImage(categoryId, index) {
+    }
+
+    removeImage(categoryId, index) {
         const data = this.categoryData[categoryId];
         
         // Remove from the correct array based on current step
@@ -983,7 +1210,9 @@ class App {
                 document.body.removeChild(modal);
             }
         });
-    }    updateNote(categoryId, note) {
+    }
+
+    updateNote(categoryId, note) {
         const data = this.categoryData[categoryId];
         
         // Update the correct note field based on current step
@@ -997,12 +1226,16 @@ class App {
         data.note = note;
         
         this.saveSession(); // Save after updating note
-    }    updateFixed(categoryId, isFixed) {
+    }
+
+    updateFixed(categoryId, isFixed) {
         const data = this.categoryData[categoryId];
         data.afterFixed = isFixed;
         this.updateSubmitButton(); // Update submit button after changing fixed status
         this.saveSession(); // Save after updating fixed status
-    }// Submit handling
+    }
+
+    // Submit handling
     updateSubmitButton() {
         const submitBtn = document.getElementById('submitBtn');
         const proceedBtn = document.getElementById('proceedToAfterBtn');
@@ -1058,7 +1291,9 @@ class App {
                 proceedBtn.style.display = 'none';
             }
         }
-    }    async handleSubmitClick() {
+    }
+
+    async handleSubmitClick() {
         // Double-check validation before submitting
         if (this.currentStep === 'after') {
             const submitBtn = document.getElementById('submitBtn');
@@ -1068,7 +1303,9 @@ class App {
             }
             await this.handleSubmit('after');
         }
-    }async handleSubmit(step) {
+    }
+
+    async handleSubmit(step) {
         if (step === 'after') {
             // For step 2 (after), submit both before and after data
             await this.submitBothSteps();
@@ -1076,7 +1313,9 @@ class App {
             // For step 1 (before), this shouldn't happen in the new workflow
             this.showToast('Vui lòng hoàn thành bước 2 để gửi dữ liệu', 'error');
         }
-    }    async submitBothSteps() {
+    }
+
+    async submitBothSteps() {
         // First, validate that all selected after categories with images have answered the yes/no question
         const unansweredCategories = [];
         for (const categoryId of this.selectedAfterCategories) {
@@ -1197,10 +1436,14 @@ class App {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(afterSubmissionData)
-            });            if (!afterResponse.ok) {
+            });
+
+            if (!afterResponse.ok) {
                 const errorData = await afterResponse.json();
                 throw new Error(errorData.error || 'Gửi dữ liệu bước 2 thất bại');
-            }            // Both submissions successful
+            }
+
+            // Both submissions successful
             console.log('✅ Both submissions completed successfully');
             this.showToast('Gửi dữ liệu thành công! Cảm ơn bạn đã hoàn thành kiểm tra.', 'success');
             
@@ -1217,7 +1460,9 @@ class App {
             
             console.log('🔄 Starting redirect process...');
             // Hide loading overlay first
-            this.showLoading(false);            // Return to stores screen with a small delay to let UI update
+            this.showLoading(false);
+
+            // Return to stores screen with a small delay to let UI update
             setTimeout(() => {
                 console.log('🏪 Calling showStores()...');
                 try {
@@ -1229,7 +1474,8 @@ class App {
                     console.log('🔄 Fallback: showing store screen directly...');
                     this.showScreen('storeScreen');
                 }
-            }, 500);} catch (error) {
+            }, 500);
+        } catch (error) {
             console.error('Error submitting data:', error);
             this.showToast(error.message || 'Lỗi gửi dữ liệu', 'error');
             this.showLoading(false); // Hide loading on error
@@ -1420,7 +1666,9 @@ class App {
         } finally {
             this.showLoading(false);
         }
-    }    handleBackToStores() {
+    }
+
+    handleBackToStores() {
         console.log('🔙 Handling back to stores - cleaning up state');
         
         try {
@@ -1455,6 +1703,3 @@ class App {
         }
     }
 }
-
-// Initialize the app
-const app = new App();

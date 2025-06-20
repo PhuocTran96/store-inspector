@@ -301,7 +301,7 @@ body {
     position: absolute;
     top: 15px;
     right: 20px;
-    font-size: 2rem;
+    font-size: 1.6rem; /* Reduced slightly */
     font-weight: bold;
     color: #dc3545;
     cursor: pointer;
@@ -315,6 +315,8 @@ body {
     transition: var(--transition);
     background: white;
     z-index: 10;
+    line-height: 1; /* Add this line */
+    font-family: Arial, sans-serif; /* Use a consistent font */
 }
 
 .close:hover {
