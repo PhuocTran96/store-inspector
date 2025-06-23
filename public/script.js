@@ -138,19 +138,20 @@ class App {
         } catch (error) {
             console.error('Error clearing session:', error);
         }
-    }
-
-    init() {
+    }    init() {
+        console.log('🚀 App initializing...');
         this.bindEvents();
         this.setupSessionPersistence();
         this.checkAuthStatus();
-    }
-
-    bindEvents() {
+        console.log('✅ App initialized');
+    }bindEvents() {
+        console.log('🔗 Binding events...');
         // Login
         const loginForm = document.getElementById('loginForm');
+        console.log('🔐 Login form found:', !!loginForm, loginForm);
         if (loginForm) {
             loginForm.addEventListener('submit', this.handleLogin.bind(this));
+            console.log('🔐 Login form event listener added');
         }
         // Change password
         const changePasswordBtn = document.getElementById('changePasswordBtn');
@@ -420,10 +421,11 @@ class App {
             // On error, show login screen
             this.showScreen('loginScreen');
         }
-    }
-
-    async handleLogin(e) {
+    }    async handleLogin(e) {
+        console.log('🔐 handleLogin called, event type:', e.type);
         e.preventDefault();
+        e.stopPropagation();
+        console.log('🔐 Form submission prevented, showing loading...');
         this.showLoading(true);
 
         const formData = new FormData(e.target);
@@ -432,7 +434,7 @@ class App {
             password: formData.get('password')
         };
 
-        console.log('Đang đăng nhập với:', credentials.username);
+        console.log('🔐 Đang đăng nhập với:', credentials.username, 'password length:', credentials.password?.length);
 
         try {
             const response = await fetch('/api/login', {
@@ -1703,3 +1705,9 @@ class App {
         }
     }
 }
+
+// Initialize the app when the DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('🌟 DOM loaded, creating App instance...');
+    window.app = new App();
+});

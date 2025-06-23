@@ -667,10 +667,24 @@ app.post('/api/login', async (req, res) => {
     console.log('Không tìm thấy user');
     return res.status(401).json({ error: 'Invalid credentials' });
   }
-
   console.log(`Tìm thấy user: ${user.Username}, Role: ${user.Role}, User ID: ${user['User ID']}`);
-  // Use bcrypt to compare password
-  const isMatch = await bcrypt.compare(password, user.Password);
+  
+  // Try bcrypt comparison first, fallback to plain text if it fails
+  let isMatch = false;
+  try {
+    // First try bcrypt comparison (for hashed passwords)
+    isMatch = await bcrypt.compare(password, user.Password);
+  } catch (error) {
+    // If bcrypt fails, it might be a plain text password
+    console.log('Bcrypt comparison failed, trying plain text comparison');
+    isMatch = false;
+  }
+  
+  // If bcrypt comparison failed, try plain text comparison
+  if (!isMatch) {
+    isMatch = user.Password === password;
+  }
+  
   if (isMatch) {
     req.session.user = {
       id: user['User ID'].trim(),
