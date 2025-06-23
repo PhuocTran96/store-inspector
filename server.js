@@ -723,26 +723,40 @@ app.post('/api/change-password', async (req, res) => {
     
     if (!userId) {
       return res.status(400).json({ error: 'User ID is required' });
-    }
-      // Find user in MongoDB
+    }    // Find user in MongoDB
     const user = await User.findOne({ userId: userId.trim() });
     
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    if (user.password !== currentPassword) {
-      return res.status(401).json({ error: 'Current password is incorrect' });
+    // Check current password using bcrypt comparison first, fallback to plain text
+    let isCurrentPasswordValid = false;
+    try {
+      // First try bcrypt comparison (for hashed passwords)
+      isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    } catch (error) {
+      // If bcrypt fails, it might be a plain text password
+      console.log('Bcrypt comparison failed for current password, trying plain text comparison');
+      isCurrentPasswordValid = false;
+    }
+    
+    // If bcrypt comparison failed, try plain text comparison
+    if (!isCurrentPasswordValid) {
+      isCurrentPasswordValid = user.password === currentPassword;
     }
 
-    // Update password in MongoDB
-    user.password = await bcrypt.hash(String(newPassword), 10);
+    if (!isCurrentPasswordValid) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }    // Update password in MongoDB
+    const hashedNewPassword = await bcrypt.hash(String(newPassword), 10);
+    user.password = hashedNewPassword;
     user.mustChangePassword = false;
     await user.save();
-      // Also update in memory array for compatibility
+      // Also update in memory array for compatibility (store hashed password)
     const userIndex = usersData.findIndex(u => u['User ID'] && u['User ID'].trim() === userId.trim());
     if (userIndex !== -1) {
-      usersData[userIndex].Password = newPassword;
+      usersData[userIndex].Password = hashedNewPassword;
     }
     
     console.log(`✅ Password updated for user: ${user.username}`);
