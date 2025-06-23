@@ -45,18 +45,29 @@ const deleteFromS3 = async (fileUrl) => {
   try {
     // Extract key from S3 URL
     const urlParts = new URL(fileUrl);
-    const key = urlParts.pathname.substring(1); // Remove leading slash
+    let key = urlParts.pathname.substring(1); // Remove leading slash
+    
+    // Handle URL encoding in the key
+    key = decodeURIComponent(key);
+    
+    console.log(`Attempting to delete S3 key: ${key}`);
     
     const params = {
       Bucket: process.env.AWS_S3_BUCKET_NAME,
       Key: key
     };
     
-    await s3.deleteObject(params).promise();
+    const result = await s3.deleteObject(params).promise();
     console.log(`Successfully deleted from S3: ${key}`);
+    console.log('S3 delete result:', result);
     return true;
   } catch (error) {
     console.error('Error deleting from S3:', error);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      statusCode: error.statusCode
+    });
     return false;
   }
 };
