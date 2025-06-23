@@ -2278,15 +2278,35 @@ app.post('/api/template/upload-users', fileUpload.single('usersFile'), requireAd
       return res.status(400).json({ error: 'No valid user data found in file.' });
     }
     let upserted = 0;
+    let updated = 0;
+    let errors = [];
     for (const user of users) {
-      if (!user.username || !user.userId || !user.role || !user.password) continue;
+      if (!user.username || !user.userId || !user.role || !user.password) {
+        errors.push(`Skipped user with missing data: ${JSON.stringify(user)}`);
+        continue;
+      }
       const hashedPassword = await bcrypt.hash(String(user.password), 10);
-      await User.findOneAndUpdate(
-        { userId: user.userId },
-        { $set: { ...user, password: hashedPassword, mustChangePassword: true } },
-        { upsert: true, new: true }
-      );
-      upserted++;
+      const existingUser = await User.findOne({
+        $or: [{ username: user.username }, { userId: user.userId }]
+      });
+      if (existingUser) {
+        await User.findOneAndUpdate(
+          { $or: [{ username: user.username }, { userId: user.userId }] },
+          { $set: { ...user, password: hashedPassword, mustChangePassword: true } },
+          { new: true }
+        );
+        updated++;
+      } else {
+        await User.findOneAndUpdate(
+          { userId: user.userId },
+          { $set: { ...user, password: hashedPassword, mustChangePassword: true } },
+          { upsert: true, new: true }
+        );
+        upserted++;
+      }
+    }
+    if (errors.length > 0) {
+      return res.status(400).json({ error: `Processed ${upserted} new users and updated ${updated} existing users, but encountered errors: ${errors.join('; ')}`, count: upserted + updated });
     }
     await loadData();
     fs.unlinkSync(filePath);

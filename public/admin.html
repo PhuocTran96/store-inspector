@@ -586,51 +586,7 @@
                     window.open('/api/template/users-sample', '_blank');
                 });
             }
-            // Import Users logic
-            const importUsersBtn = document.getElementById('importUsersBtn');
-            const importUsersFileInput = document.getElementById('importUsersFileInput');
-            const importUsersProgress = document.getElementById('importUsersProgress');
-            const importUsersProgressFill = document.getElementById('importUsersProgressFill');
-            const importUsersProgressText = document.getElementById('importUsersProgressText');
-            if (importUsersBtn && importUsersFileInput) {
-                importUsersBtn.addEventListener('click', () => importUsersFileInput.click());
-                importUsersFileInput.addEventListener('change', async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    importUsersProgress.style.display = 'block';
-                    importUsersProgressFill.style.width = '10%';
-                    importUsersProgressText.textContent = 'Đang tải lên...';
-                    const formData = new FormData();
-                    formData.append('usersFile', file);
-                    try {
-                        const res = await fetch('/api/template/upload-users', {
-                            method: 'POST',
-                            body: formData,
-                            credentials: 'same-origin'
-                        });
-                        if (res.ok) {
-                            importUsersProgressFill.style.width = '100%';
-                            importUsersProgressText.textContent = 'Thành công! Đang làm mới danh sách...';
-                            setTimeout(() => {
-                                importUsersProgress.style.display = 'none';
-                                importUsersProgressFill.style.width = '0%';
-                                importUsersProgressText.textContent = '';
-                            }, 1200);
-                            showToast('Đã import users thành công', 'success');
-                            loadUsers();
-                        } else {
-                            const err = await res.json();
-                            importUsersProgressFill.style.width = '0%';
-                            importUsersProgressText.textContent = err.error || 'Lỗi import users';
-                            showToast(err.error || 'Lỗi import users', 'error');
-                        }
-                    } catch (error) {
-                        importUsersProgressFill.style.width = '0%';
-                        importUsersProgressText.textContent = 'Lỗi kết nối';
-                        showToast('Lỗi kết nối', 'error');
-                    }
-                });
-            }
+            // Import Users logic đã được xử lý trong script.js
             if (userForm) {
                 userForm.addEventListener('submit', handleUserFormSubmit);
             }
