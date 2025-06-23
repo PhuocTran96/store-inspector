@@ -640,39 +640,41 @@
                     console.error('Session check error:', error);
                 }
             }
-            
-            async function handleAdminLogin(e) {
+              async function handleAdminLogin(e) {
                 e.preventDefault();
                 showLoading(true);
                 
                 const username = document.getElementById('adminUsername').value;
                 const password = document.getElementById('adminPassword').value;
                 
-                // Check for hardcoded admin credentials
-                if (username === 'admin' && password === 'admin123') {
-                    try {
-                        // Log in via the API
-                        const response = await fetch('/api/login', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ username: 'admin', password: 'admin123' }),
-                            credentials: 'same-origin'
-                        });
+                try {
+                    // Log in via the API with the entered credentials
+                    const response = await fetch('/api/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username: username, password: password }),
+                        credentials: 'same-origin'
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
                         
-                        if (response.ok) {
+                        // Check if the user is actually an admin
+                        if (data.user && data.user.role === 'Admin') {
                             loginSection.style.display = 'none';
                             dashboardSection.style.display = 'block';
                             loadSubmissions();
                             showToast('Đăng nhập thành công!', 'success');
                         } else {
-                            showToast('Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin đăng nhập.', 'error');
+                            showToast('Tài khoản không có quyền truy cập admin.', 'error');
                         }
-                    } catch (error) {
-                        console.error('Login error:', error);
-                        showToast('Lỗi kết nối', 'error');
+                    } else {
+                        const error = await response.json();
+                        showToast(error.error || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin đăng nhập.', 'error');
                     }
-                } else {
-                    showToast('Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin đăng nhập.', 'error');
+                } catch (error) {
+                    console.error('Login error:', error);
+                    showToast('Lỗi kết nối', 'error');
                 }
                 
                 showLoading(false);
