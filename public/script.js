@@ -1636,15 +1636,16 @@ class App {
             this.showToast('Lỗi kết nối', 'error');
         } finally {
             this.showLoading(false);
-        }
-    }
+        }    }
 
     // Admin functions
     async handleExport() {
         this.showLoading(true, 'Đang xuất dữ liệu...');
         
         try {
-            const response = await fetch('/api/export');
+            const response = await fetch('/api/admin/export', {
+                credentials: 'same-origin' // Include session cookies for admin authentication
+            });
             
             if (response.ok) {
                 const blob = await response.blob();
@@ -1659,8 +1660,29 @@ class App {
                 
                 this.showToast('Xuất dữ liệu thành công!', 'success');
             } else {
-                const error = await response.json();
-                this.showToast(error.error || 'Lỗi xuất dữ liệu', 'error');
+                // Handle different response types
+                let errorMessage = 'Lỗi xuất dữ liệu';
+                try {
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        const error = await response.json();
+                        errorMessage = error.error || errorMessage;
+                    } else {
+                        // If it's HTML or other content, use a generic message based on status
+                        if (response.status === 404) {
+                            errorMessage = 'Endpoint not found';
+                        } else if (response.status === 403) {
+                            errorMessage = 'Không có quyền truy cập. Vui lòng đăng nhập lại.';
+                        } else if (response.status === 401) {
+                            errorMessage = 'Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.';
+                        } else {
+                            errorMessage = `Server error: ${response.status}`;
+                        }
+                    }
+                } catch (parseError) {
+                    console.warn('Could not parse error response:', parseError);
+                }
+                this.showToast(errorMessage, 'error');
             }
         } catch (error) {
             console.error('Export error:', error);

@@ -462,8 +462,10 @@
             let currentPage = 1;            let itemsPerPage = 10;
             let selectedStoresFile = null;
             let selectedCategoriesFile = null;
-            let users = [];
-            let editingUserId = null;            let filters = {
+            let users = [];            let editingUserId = null;
+            let isExporting = false; // Flag to prevent multiple exports
+            let isExportingPptx = false; // Flag to prevent multiple PPTX exports
+            let filters = {
                 username: '',
                 tdsName: '',
                 store: '',
@@ -1049,7 +1051,14 @@
                 }
                 
                 showLoading(false);
-            }              async function handleExport() {
+            }            async function handleExport() {
+                // Prevent multiple simultaneous exports
+                if (isExporting) {
+                    showToast('Đang xuất file, vui lòng đợi...', 'warning');
+                    return;
+                }
+                
+                isExporting = true;
                 showLoading(true);
                   try {
                     const queryParams = new URLSearchParams({
@@ -1064,8 +1073,7 @@
                     const response = await fetch('/api/admin/export?' + queryParams, {
                         credentials: 'same-origin'
                     });
-                    
-                    if (response.ok) {
+                      if (response.ok) {
                         const blob = await response.blob();
                         const url = window.URL.createObjectURL(blob);
                         const a = document.createElement('a');
@@ -1077,14 +1085,42 @@
                         window.URL.revokeObjectURL(url);
                         showToast('Xuất file thành công!', 'success');
                     } else {
-                        showToast('Xuất file thất bại', 'error');
+                        // Handle different response types
+                        let errorMessage = 'Xuất file thất bại';
+                        try {
+                            const contentType = response.headers.get('content-type');
+                            if (contentType && contentType.includes('application/json')) {
+                                const error = await response.json();
+                                errorMessage = error.error || errorMessage;
+                            } else {
+                                if (response.status === 403) {
+                                    errorMessage = 'Không có quyền truy cập';
+                                } else if (response.status === 401) {
+                                    errorMessage = 'Phiên làm việc đã hết hạn';
+                                } else {
+                                    errorMessage = `Lỗi server: ${response.status}`;
+                                }
+                            }
+                        } catch (parseError) {
+                            console.warn('Could not parse error response:', parseError);
+                        }
+                        showToast(errorMessage, 'error');
                     }
                 } catch (error) {
                     console.error('Export error:', error);
                     showToast('Lỗi kết nối', 'error');
+                } finally {
+                    isExporting = false;
+                    showLoading(false);
                 }
-                  showLoading(false);
             }            async function handleExportPptx() {
+                // Prevent multiple simultaneous exports
+                if (isExportingPptx) {
+                    showToast('Đang xuất PowerPoint, vui lòng đợi...', 'warning');
+                    return;
+                }
+                
+                isExportingPptx = true;
                 showLoading(true);
                 
                 try {
@@ -1109,18 +1145,37 @@
                         a.download = `submissions_${new Date().toISOString().split('T')[0]}.pptx`;
                         document.body.appendChild(a);
                         a.click();
-                        document.body.removeChild(a);
-                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);                        window.URL.revokeObjectURL(url);
                         showToast('Xuất PowerPoint thành công!', 'success');
                     } else {
-                        showToast('Xuất PowerPoint thất bại', 'error');
+                        // Handle different response types
+                        let errorMessage = 'Xuất PowerPoint thất bại';
+                        try {
+                            const contentType = response.headers.get('content-type');
+                            if (contentType && contentType.includes('application/json')) {
+                                const error = await response.json();
+                                errorMessage = error.error || errorMessage;
+                            } else {
+                                if (response.status === 403) {
+                                    errorMessage = 'Không có quyền truy cập';
+                                } else if (response.status === 401) {
+                                    errorMessage = 'Phiên làm việc đã hết hạn';
+                                } else {
+                                    errorMessage = `Lỗi server: ${response.status}`;
+                                }
+                            }
+                        } catch (parseError) {
+                            console.warn('Could not parse error response:', parseError);
+                        }
+                        showToast(errorMessage, 'error');
                     }
                 } catch (error) {
                     console.error('PowerPoint export error:', error);
                     showToast('Lỗi kết nối', 'error');
+                } finally {
+                    isExportingPptx = false;
+                    showLoading(false);
                 }
-                
-                showLoading(false);
             }
 
             function applyFilters() {
@@ -1673,13 +1728,6 @@
                 
                 showLoading(false);
             }
-        });
-    </script>
-    <script src="script.js"></script>
-    <script>
-      document.addEventListener('DOMContentLoaded', function() {
-        new App();
-      });
-    </script>
+        });    </script>
 </body>
 </html>

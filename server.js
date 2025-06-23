@@ -656,11 +656,10 @@ app.post('/api/login', async (req, res) => {
   
   console.log(`Đang tìm user với ID: ${username}`);
   console.log('Danh sách users:', usersData.map(u => u['User ID']));
-  
-  // Tìm kiếm không phân biệt khoảng trắng
+    // Tìm kiếm không phân biệt khoảng trắng và chữ hoa chữ thường
   const user = usersData.find(u => {
     if (!u['User ID']) return false;
-    return u['User ID'].trim() === username.trim();
+    return u['User ID'].trim().toLowerCase() === username.trim().toLowerCase();
   });
   
   if (!user) {
