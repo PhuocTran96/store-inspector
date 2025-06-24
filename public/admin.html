@@ -763,11 +763,11 @@
                         <td>
                             <input type="checkbox" class="row-checkbox" data-id="${submission._id}">
                         </td>
-                        <td>${submission.username || 'N/A'}</td>
-                        <td>${submission.tdsName || 'N/A'}</td>
-                        <td>${submission.storeName || 'N/A'}</td>
-                        <td>${submission.categoryName || 'N/A'}</td>
-                        <td>${formattedDate}</td>
+                        <td class="username-cell"><span class="truncate" title="${submission.username || ''}">${submission.username || 'N/A'}</span></td>
+                        <td class="tds-name-cell"><span class="truncate" title="${submission.tdsName || ''}">${submission.tdsName || 'N/A'}</span></td>
+                        <td class="store-name-cell"><span class="truncate" title="${submission.storeName || ''}">${submission.storeName || 'N/A'}</span></td>
+                        <td class="category-name-cell"><span class="truncate" title="${submission.categoryName || ''}">${submission.categoryName || 'N/A'}</span></td>
+                        <td class="date-cell"><span class="truncate" title="${formattedDate}">${formattedDate}</span></td>
                         <td>${imageCount} ảnh</td>
                         <td class="actions">
                             <button class="btn-action btn-view" data-id="${submission._id}">
@@ -795,8 +795,26 @@
                     checkbox.addEventListener('change', handleRowCheckboxChange);
                 });
                 
+                // Render results info
+                renderResultsInfo(startIndex, endIndex, submissions.length);
                 // Render pagination
                 renderPagination(totalPages);
+            }
+            
+            function renderResultsInfo(startIndex, endIndex, total) {
+                let infoDiv = document.getElementById('resultsInfo');
+                if (!infoDiv) {
+                    infoDiv = document.createElement('div');
+                    infoDiv.id = 'resultsInfo';
+                    infoDiv.style.textAlign = 'right';
+                    infoDiv.style.margin = '10px 0 0 0';
+                    paginationContainer.parentNode.insertBefore(infoDiv, paginationContainer);
+                }
+                if (total === 0) {
+                    infoDiv.textContent = '';
+                } else {
+                    infoDiv.textContent = `Hiển thị ${startIndex + 1}–${endIndex} trên tổng ${total} kết quả`;
+                }
             }
             
             function renderPagination(totalPages) {
@@ -816,8 +834,10 @@
                 });
                 paginationContainer.appendChild(prevBtn);
                 
-                // Page buttons
-                for (let i = 1; i <= totalPages; i++) {
+                // Smart pagination window
+                const windowSize = 2; // pages before/after current
+                const pageButtons = [];
+                function addPageBtn(i) {
                     const pageBtn = document.createElement('button');
                     pageBtn.textContent = i;
                     pageBtn.classList.toggle('active', i === currentPage);
@@ -827,7 +847,30 @@
                     });
                     paginationContainer.appendChild(pageBtn);
                 }
-                
+                // First page
+                if (currentPage > 1 + windowSize) {
+                    addPageBtn(1);
+                    if (currentPage > 2 + windowSize) {
+                        const ellipsis = document.createElement('span');
+                        ellipsis.textContent = '...';
+                        ellipsis.style.padding = '0 8px';
+                        paginationContainer.appendChild(ellipsis);
+                    }
+                }
+                // Pages around current
+                for (let i = Math.max(1, currentPage - windowSize); i <= Math.min(totalPages, currentPage + windowSize); i++) {
+                    addPageBtn(i);
+                }
+                // Last page
+                if (currentPage < totalPages - windowSize) {
+                    if (currentPage < totalPages - windowSize - 1) {
+                        const ellipsis = document.createElement('span');
+                        ellipsis.textContent = '...';
+                        ellipsis.style.padding = '0 8px';
+                        paginationContainer.appendChild(ellipsis);
+                    }
+                    addPageBtn(totalPages);
+                }
                 // Next button
                 const nextBtn = document.createElement('button');
                 nextBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';

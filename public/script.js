@@ -974,6 +974,7 @@ class App {
                 afterImages: [],
                 afterNote: '',
                 afterFixed: null, // null = not answered, true = yes, false = no
+                expectedResolutionDate: '',
                 // Legacy support for current step
                 images: [],
                 note: ''
@@ -1022,6 +1023,16 @@ class App {
                         <span>Chưa fix</span>
                     </label>
                 </div>
+                ${data.afterFixed === false ? `
+                <div class="expected-resolution-date">
+                    <label>Ngày dự kiến sẽ sửa xong <span class="required-indicator">*</span></label>
+                    <input type="date" id="expectedDate-${category.ID}" value="${data.expectedResolutionDate || ''}"
+                        onchange="app.updateExpectedResolutionDate('${category.ID}', this.value)">
+                    <div class="warning-text" style="display:none;" id="expectedDateWarning-${category.ID}">
+                        Vui lòng chọn ngày dự kiến sửa xong
+                    </div>
+                </div>
+                ` : ''}
                 ${needsAnswer ? '<div class="warning-text">⚠️ Vui lòng trả lời câu hỏi này để có thể gửi kết quả</div>' : ''}
             </div>
         ` : '';
@@ -1062,8 +1073,7 @@ class App {
                     <label class="note-label">Ghi chú:</label>
                     <textarea class="note-input" 
                               placeholder="Nhập ghi chú cho danh mục này..." 
-                              value="${data.note}"
-                              oninput="app.updateNote('${category.ID}', this.value)"></textarea>
+                              oninput="app.updateNote('${category.ID}', this.value)">${data.note || ''}</textarea>
                 </div>
             </div>
         `;
@@ -1233,17 +1243,38 @@ class App {
     updateFixed(categoryId, isFixed) {
         const data = this.categoryData[categoryId];
         data.afterFixed = isFixed;
-        this.updateSubmitButton(); // Update submit button after changing fixed status
         this.saveSession(); // Save after updating fixed status
+
+        // Re-render the category to show/hide the date input
+        const category = this.categories.find(cat => cat.ID === categoryId);
+        if (category) {
+            const categoryItems = document.querySelectorAll('.category-item');
+            categoryItems.forEach(item => {
+                const categoryHeader = item.querySelector('.category-header h3');
+                if (categoryHeader && categoryHeader.textContent === category.Category) {
+                    item.innerHTML = this.getCategoryHTML(category);
+                }
+            });
+        }
+
+        this.updateSubmitButton(); // Update submit button after changing fixed status
+    }
+
+    updateExpectedResolutionDate(categoryId, date) {
+        const data = this.categoryData[categoryId];
+        data.expectedResolutionDate = date;
+        this.saveSession();
+        this.updateSubmitButton(); // Ensure button state updates immediately
     }
 
     // Submit handling
     updateSubmitButton() {
         const submitBtn = document.getElementById('submitBtn');
         const proceedBtn = document.getElementById('proceedToAfterBtn');
-        
         const hasImages = Object.values(this.categoryData).some(data => data.images.length > 0);
-        
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        let invalidDateCategories = [];
         if (this.currentStep === 'before') {
             // Show proceed button for "before" step
             if (proceedBtn) {
@@ -1256,7 +1287,6 @@ class App {
             // Check if all selected after categories have answered the yes/no question
             const hasImagesAfter = Object.values(this.categoryData).some(data => data.afterImages && data.afterImages.length > 0);
             let allQuestionsAnswered = true;
-            
             // Validate that all selected after categories with images have answered the question
             for (const categoryId of this.selectedAfterCategories) {
                 const data = this.categoryData[categoryId];
@@ -1268,14 +1298,52 @@ class App {
                     }
                 }
             }
-              // Show submit button if has images, but disable if questions aren't answered
+            let allExpectedDatesFilled = true;
+            for (const categoryId of this.selectedAfterCategories) {
+                const data = this.categoryData[categoryId];
+                const warning = document.getElementById(`expectedDateWarning-${categoryId}`);
+                if (data && data.afterImages && data.afterImages.length > 0 && data.afterFixed === false) {
+                    if (!data.expectedResolutionDate) {
+                        allExpectedDatesFilled = false;
+                        if (warning) {
+                            warning.textContent = 'Vui lòng chọn ngày dự kiến sửa xong';
+                            warning.style.display = 'block';
+                        }
+                    } else {
+                        // Validate date is today or in the future
+                        const selectedDate = new Date(data.expectedResolutionDate);
+                        selectedDate.setHours(0,0,0,0);
+                        if (selectedDate < today) {
+                            allExpectedDatesFilled = false;
+                            invalidDateCategories.push(data.name || categoryId);
+                            if (warning) {
+                                warning.textContent = 'Ngày dự kiến sửa xong phải từ hôm nay trở đi';
+                                warning.style.display = 'block';
+                            }
+                        } else {
+                            if (warning) warning.style.display = 'none';
+                        }
+                    }
+                } else if (warning) {
+                    warning.style.display = 'none';
+                }
+            }
+            // Show submit button if has images, but disable if questions aren't answered
             if (submitBtn) {
                 if (hasImagesAfter) {
                     submitBtn.style.display = 'block';
-                    
                     // Update button text and style based on validation
                     if (!allQuestionsAnswered) {
                         submitBtn.textContent = 'Vui lòng trả lời tất cả câu hỏi "Đã sửa chưa?"';
+                        submitBtn.style.backgroundColor = '#dc3545';
+                        submitBtn.style.cursor = 'not-allowed';
+                        submitBtn.disabled = true;
+                    } else if (!allExpectedDatesFilled) {
+                        if (invalidDateCategories.length > 0) {
+                            submitBtn.textContent = 'Ngày dự kiến sửa xong phải từ hôm nay trở đi';
+                        } else {
+                            submitBtn.textContent = 'Vui lòng nhập ngày dự kiến sửa xong cho các lỗi chưa fix';
+                        }
                         submitBtn.style.backgroundColor = '#dc3545';
                         submitBtn.style.cursor = 'not-allowed';
                         submitBtn.disabled = true;
@@ -1334,6 +1402,21 @@ class App {
             return;
         }
         
+        // Validate expectedResolutionDate for all unresolved categories
+        const missingDateCategories = [];
+        for (const categoryId of this.selectedAfterCategories) {
+            const data = this.categoryData[categoryId];
+            if (data && data.afterImages && data.afterImages.length > 0 && data.afterFixed === false) {
+                if (!data.expectedResolutionDate) {
+                    missingDateCategories.push(data.name || categoryId);
+                }
+            }
+        }
+        if (missingDateCategories.length > 0) {
+            this.showToast(`Vui lòng nhập ngày dự kiến sửa xong cho các danh mục chưa fix: ${missingDateCategories.join(', ')}`, 'error');
+            return;
+        }
+        
         // Get step 1 (before) data - categories that have before images
         const beforeCategoriesWithData = [];
         
@@ -1360,7 +1443,8 @@ class App {
                     name: data.name,
                     images: data.afterImages,
                     note: data.afterNote || '',
-                    fixed: data.afterFixed // Include the fixed status
+                    fixed: data.afterFixed, // Include the fixed status
+                    expectedResolutionDate: data.afterFixed === false ? data.expectedResolutionDate : undefined
                 });
             }
         }
@@ -1425,7 +1509,8 @@ class App {
                     categoryName: data.name,
                     images: data.images,
                     note: data.note,
-                    fixed: data.fixed // Include the fixed status in submission
+                    fixed: data.fixed, // Include the fixed status
+                    expectedResolutionDate: data.expectedResolutionDate
                 }))
             };
 

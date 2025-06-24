@@ -10,6 +10,7 @@ const submissionSchema = new mongoose.Schema({
   categoryName: { type: String, required: true },
   note: { type: String, default: '' }, // Text note/comment
   fixed: { type: Boolean }, // Yes/No answer for "after" submissions (true=fixed, false=not fixed)
+  expectedResolutionDate: { type: Date }, // Date when issue is expected to be fixed (if not fixed)
   images: [{ type: String }], // Array of image URLs
   submissionType: { type: String, enum: ['before', 'after'], required: true }, // New field
   sessionId: { type: String, required: true }, // To link before and after submissions

@@ -1137,3 +1137,39 @@ body {
         padding: 3px 8px;
     }
 }
+
+.truncate {
+    display: inline-block;
+    max-width: 180px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+}
+
+.store-name-cell {
+    max-width: 200px;
+    min-width: 120px;
+    width: 180px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.admin-table td, .admin-table th {
+    vertical-align: middle;
+    height: 48px;
+}
+
+@media (max-width: 900px) {
+    .truncate, .store-name-cell {
+        max-width: 100px;
+        width: 100px;
+    }
+}
+
+#resultsInfo {
+    color: #fff;
+    font-weight: bold;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}

@@ -548,6 +548,7 @@ app.post('/api/submit', async (req, res) => {
           categoryName: category.categoryName,
           note: category.note || '',
           fixed: category.fixed, // Save the yes/no answer separately
+          expectedResolutionDate: category.fixed === false ? category.expectedResolutionDate : undefined,
           images: category.processedImages || [],
           submissionType: step,
           sessionId: sessionId,
@@ -1695,9 +1696,6 @@ app.get('/api/admin/export', requireAdmin, async (req, res) => {
     const workbook = new ExcelJS.Workbook();
 
     // --- BEGIN: Add Summary Sheet ---
-    // 1. Get all users (excluding Admins)
-    const allUsers = await User.find({ role: { $ne: 'Admin' } }).lean();
-
     // Determine the month to process (from filter, or current month)
     let month, year;
     if (req.query.startDate) {
@@ -1709,12 +1707,27 @@ app.get('/api/admin/export', requireAdmin, async (req, res) => {
       month = now.getMonth();
       year = now.getFullYear();
     }
-    // Get number of days in the month
     const daysInMonth = new Date(year, month + 1, 0).getDate();
+    // 1. Get all users (excluding Admins)
+    let userFilter = { role: { $ne: 'Admin' } };
+    if (filter.username) userFilter.username = filter.username;
+    if (filter.tdsName) userFilter.tdsName = filter.tdsName;
+    const allUsers = await User.find(userFilter).lean();
 
     // 2. For each user, calculate all summary fields
     const summaryRows = [];
     for (const user of allUsers) {
+      // Only consider submissions matching the filter for this user
+      const submissionFilter = { username: user.username };
+      if (filter.storeName) submissionFilter.storeName = filter.storeName;
+      if (filter.categoryName) submissionFilter.categoryName = filter.categoryName;
+      if (filter.submittedAt) submissionFilter.submittedAt = filter.submittedAt;
+      let userSubs = [];
+      try {
+        userSubs = await Submission.find(submissionFilter).lean();
+      } catch (e) {
+        userSubs = [];
+      }
       // Target MCP: sum of 'Value' in plan_visit for this user (case-sensitive)
       let targetMcp = 0;
       let totalStores = 0;
@@ -1728,19 +1741,18 @@ app.get('/api/admin/export', requireAdmin, async (req, res) => {
       } catch (e) {
         console.warn(`Error getting plan_visit for user ${user.username}:`, e.message);
       }
-      // Actual MCP: count unique (storeId, date) pairs in Submission for this user
-      // Actual stores: unique storeId in Submission
+      // Actual MCP: count unique (storeId, date) pairs in filtered Submission for this user
       let actualMcp = 0;
       let actualStores = 0;
       let dayStoreMap = {};
       try {
-        // Only consider submissions in the filtered month
+        // Only consider submissions in the filtered month and matching filter
         const monthStart = new Date(year, month, 1);
         const monthEnd = new Date(year, month, daysInMonth, 23, 59, 59, 999);
-        const submissions = await Submission.find({
-          username: user.username,
-          submittedAt: { $gte: monthStart, $lte: monthEnd }
-        }).lean();
+        const submissions = userSubs.filter(sub => {
+          const d = new Date(sub.submittedAt);
+          return d >= monthStart && d <= monthEnd;
+        });
         // Actual MCP: unique (storeId, date) pairs
         const mcpSet = new Set();
         // Actual stores: unique storeId
@@ -1918,6 +1930,7 @@ app.get('/api/admin/export', requireAdmin, async (req, res) => {
       { header: 'Step (Before/After)', key: 'submissionType', width: 15 },
       { header: 'Note', key: 'note', width: 30 },
       { header: 'Fixed Status', key: 'fixedStatus', width: 15 },
+      { header: 'Expected Resolution Date', key: 'expectedResolutionDate', width: 18 },
       { header: 'Images', key: 'images', width: 50 },
       { header: 'Date', key: 'submittedAt', width: 20 },
       { header: 'MCP Compliance', key: 'mcpCompliance', width: 15 }
@@ -1948,6 +1961,7 @@ app.get('/api/admin/export', requireAdmin, async (req, res) => {
         submissionType: sub.submissionType || '',
         note: sub.note || '',
         fixedStatus: fixedStatus,
+        expectedResolutionDate: sub.expectedResolutionDate ? new Date(sub.expectedResolutionDate).toLocaleDateString('vi-VN') : '',
         images: (sub.images || []).join(', '),
         submittedAt: sub.submittedAt ? new Date(sub.submittedAt).toLocaleString('vi-VN') : '',
         mcpCompliance: mcpCompliance || 'N/A'
@@ -2169,8 +2183,24 @@ app.get('/api/admin/export-pptx', requireAdmin, async (req, res) => {
         y: startY
       });      // If there are unfixed categories, list them below the count
       if (unfixedCategories.length > 0) {
-        const categoryText = unfixedCategories.map(cat => `• ${cat}`).join('\n');
-        
+        // Build a list of unfixed categories with their expectedResolutionDate
+        const unfixedDetails = [];
+        sessions.forEach(({ after }) => {
+          after.forEach(submission => {
+            if (submission.fixed === false) {
+              let detail = `• ${submission.categoryName}`;
+              if (submission.expectedResolutionDate) {
+                const d = new Date(submission.expectedResolutionDate);
+                const dateStr = `${d.getDate().toString().padStart(2, '0')}-${(d.getMonth()+1).toString().padStart(2, '0')}-${d.getFullYear()}`;
+                detail += ` (Dự kiến sửa: ${dateStr})`;
+              }
+              if (!unfixedDetails.includes(detail)) {
+                unfixedDetails.push(detail);
+              }
+            }
+          });
+        });
+        const categoryText = unfixedDetails.join('\n');
         storeInfoSlide.addText(`Danh mục chưa fix:\n${categoryText}`, {
           ...col2Props,
           y: startY + rowHeight, // Position below the count
