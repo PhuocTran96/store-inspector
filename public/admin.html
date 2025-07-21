@@ -588,7 +588,60 @@
                     window.open('/api/template/users-sample', '_blank');
                 });
             }
-            // Import Users logic đã được xử lý trong script.js
+            // User Import logic for admin dashboard
+            const importUsersBtn = document.getElementById('importUsersBtn');
+            const importUsersFileInput = document.getElementById('importUsersFileInput');
+            const importUsersProgress = document.getElementById('importUsersProgress');
+            const importUsersProgressFill = document.getElementById('importUsersProgressFill');
+            const importUsersProgressText = document.getElementById('importUsersProgressText');
+            if (importUsersBtn && importUsersFileInput) {
+                importUsersBtn.addEventListener('click', () => importUsersFileInput.click());
+                importUsersFileInput.addEventListener('change', async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    if (importUsersProgress && importUsersProgressFill && importUsersProgressText) {
+                        importUsersProgress.style.display = 'block';
+                        importUsersProgressFill.style.width = '10%';
+                        importUsersProgressText.textContent = 'Đang tải lên...';
+                    }
+                    const formData = new FormData();
+                    formData.append('usersFile', file);
+                    try {
+                        const res = await fetch('/api/template/upload-users', {
+                            method: 'POST',
+                            body: formData,
+                            credentials: 'same-origin'
+                        });
+                        if (res.ok) {
+                            if (importUsersProgressFill && importUsersProgressText && importUsersProgress) {
+                                importUsersProgressFill.style.width = '100%';
+                                importUsersProgressText.textContent = 'Thành công! Đang làm mới danh sách...';
+                                setTimeout(() => {
+                                    importUsersProgress.style.display = 'none';
+                                    importUsersProgressFill.style.width = '0%';
+                                    importUsersProgressText.textContent = '';
+                                }, 1200);
+                            }
+                            showToast('Đã import users thành công', 'success');
+                            if (typeof loadUsers === 'function') loadUsers();
+                            else window.location.reload();
+                        } else {
+                            const err = await res.json();
+                            if (importUsersProgressFill && importUsersProgressText) {
+                                importUsersProgressFill.style.width = '0%';
+                                importUsersProgressText.textContent = err.error || 'Lỗi import users';
+                            }
+                            showToast(err.error || 'Lỗi import users', 'error');
+                        }
+                    } catch (error) {
+                        if (importUsersProgressFill && importUsersProgressText) {
+                            importUsersProgressFill.style.width = '0%';
+                            importUsersProgressText.textContent = 'Lỗi kết nối';
+                        }
+                        showToast('Lỗi kết nối', 'error');
+                    }
+                });
+            }
             if (userForm) {
                 userForm.addEventListener('submit', handleUserFormSubmit);
             }
@@ -1647,7 +1700,7 @@
                 const userData = {
                     username: formData.get('username'),
                     userId: formData.get('userId'),
-                    tdsName: formData.get('tdsName'),
+                    role: formData.get('role'),
                     password: formData.get('password'),
                     status: formData.get('status')
                 };
@@ -1770,6 +1823,64 @@
                 }
                 
                 showLoading(false);
+            }
+
+            // MCP upload logic
+            const mcpFileInput = document.getElementById('mcpFileInput');
+            const mcpDropzone = document.getElementById('mcpDropzone');
+            const uploadMcpBtn = document.getElementById('uploadMcpBtn');
+            let mcpFile = null;
+            if (mcpDropzone && mcpFileInput && uploadMcpBtn) {
+                mcpDropzone.addEventListener('click', () => mcpFileInput.click());
+                mcpDropzone.addEventListener('dragover', e => {
+                    e.preventDefault();
+                    mcpDropzone.classList.add('dragover');
+                });
+                mcpDropzone.addEventListener('dragleave', e => {
+                    e.preventDefault();
+                    mcpDropzone.classList.remove('dragover');
+                });
+                mcpDropzone.addEventListener('drop', e => {
+                    e.preventDefault();
+                    mcpDropzone.classList.remove('dragover');
+                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                        mcpFileInput.files = e.dataTransfer.files;
+                        handleMcpFileChange();
+                    }
+                });
+                mcpFileInput.addEventListener('change', handleMcpFileChange);
+                function handleMcpFileChange() {
+                    mcpFile = mcpFileInput.files[0];
+                    uploadMcpBtn.disabled = !mcpFile;
+                    mcpDropzone.querySelector('p').textContent = mcpFile ? mcpFile.name : 'Kéo thả file Excel hoặc click để chọn';
+                }
+                uploadMcpBtn.addEventListener('click', async () => {
+                    if (!mcpFile) return;
+                    uploadMcpBtn.disabled = true;
+                    uploadMcpBtn.textContent = 'Đang upload...';
+                    try {
+                        const formData = new FormData();
+                        formData.append('mcpFile', mcpFile);
+                        const res = await fetch('/api/template/upload-mcp', {
+                            method: 'POST',
+                            body: formData,
+                            credentials: 'same-origin'
+                        });
+                        if (res.ok) {
+                            showToast('Upload MCP thành công!');
+                        } else {
+                            const err = await res.json();
+                            showToast('Lỗi upload MCP: ' + (err.error || 'Unknown error'), 'error');
+                        }
+                    } catch (e) {
+                        showToast('Lỗi upload MCP: ' + e.message, 'error');
+                    }
+                    uploadMcpBtn.disabled = false;
+                    uploadMcpBtn.textContent = 'Upload MCP';
+                    mcpFileInput.value = '';
+                    mcpFile = null;
+                    mcpDropzone.querySelector('p').textContent = 'Kéo thả file Excel hoặc click để chọn';
+                });
             }
         });    </script>
 </body>
