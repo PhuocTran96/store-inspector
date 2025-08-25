@@ -6,6 +6,7 @@ const userSchema = new mongoose.Schema({
   role: { type: String, required: true },
   password: { type: String, required: true },
   status: { type: String, enum: ['active', 'inactive'], default: 'active' },
+  tdsName: { type: String, default: '' }, // Added for shop assignment logic
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
   mustChangePassword: { type: Boolean, default: true }
