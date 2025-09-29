@@ -1523,21 +1523,29 @@ app.post('/api/admin/users/:id/reset-password', requireAdmin, async (req, res) =
   try {
     const { id } = req.params;
     const { newPassword } = req.body;
-    
+
     if (!newPassword) {
       return res.status(400).json({ error: 'New password is required' });
     }
-    
+
     const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    
+
     // Hash new password
-    user.password = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
     user.updatedAt = new Date();
     await user.save();
-    
+
+    // Also update the in-memory usersData array to ensure login works immediately
+    const userIndex = usersData.findIndex(u => u['User ID'] && u['User ID'].trim() === user.userId.trim());
+    if (userIndex !== -1) {
+      usersData[userIndex].Password = hashedPassword;
+      console.log(`✅ Password updated in memory for user: ${user.username}`);
+    }
+
     res.json({ message: 'Password reset successfully' });
   } catch (error) {
     console.error('Error resetting password:', error);
