@@ -3,81 +3,307 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lịch sử hoạt động - Store Inspection</title>
+    <title>Activity History - Store Inspection</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        .history-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding-bottom: 20px;
+        }
+
+        .history-container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 0;
+        }
+
+        /* Header */
         .history-header {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .back-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 18px;
+        }
+
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .back-btn:active {
+            transform: scale(0.95);
+        }
+
+        .header-title h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        /* Filter Section */
+        .filter-section {
+            background: white;
+            margin: 16px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .filter-header {
+            padding: 16px;
+            background: #f8f9fa;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
-            padding: 20px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .filter-header h3 {
+            font-size: 15px;
+            font-weight: 600;
+            color: #2c3e50;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filter-toggle {
+            transition: transform 0.3s ease;
+            color: #667eea;
+            font-size: 14px;
+        }
+
+        .filter-toggle.collapsed {
+            transform: rotate(180deg);
+        }
+
+        .filter-content {
+            padding: 16px;
+            display: grid;
+            gap: 12px;
+            max-height: 300px;
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+        }
+
+        .filter-content.collapsed {
+            max-height: 0;
+            padding: 0 16px;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .filter-group label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .filter-input {
+            padding: 10px 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        .filter-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .filter-input::placeholder {
+            color: #adb5bd;
+        }
+
+        .search-input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 12px;
+            color: #adb5bd;
+            font-size: 14px;
+            pointer-events: none;
+        }
+
+        .search-input {
+            padding-left: 38px !important;
+        }
+
+        .date-range-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .date-input-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .date-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #6c757d;
+            white-space: nowrap;
+        }
+
+        .filter-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .clear-filters-btn,
+        .apply-filters-btn {
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .clear-filters-btn {
+            background: #f1f3f5;
+            color: #667eea;
+        }
+
+        .clear-filters-btn:hover {
+            background: #e9ecef;
+        }
+
+        .apply-filters-btn {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 12px;
             color: white;
         }
 
-        .history-header .btn-primary {
-            cursor: pointer;
-            user-select: none;
-            pointer-events: auto;
-            z-index: 10;
-            position: relative;
+        .apply-filters-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
         }
 
-        .history-header .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        }
-
-        .history-header .btn-primary:active {
+        .apply-filters-btn:active {
             transform: translateY(0);
         }
 
-        .history-session {
+        /* History Content */
+        .history-content {
+            padding: 0 16px;
+        }
+
+        /* Inspection Card */
+        .inspection-card {
             background: white;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border-radius: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
             overflow: hidden;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
 
-        .session-header {
-            padding: 20px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #e9ecef;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        .inspection-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
         }
 
-        .session-info h3 {
-            margin: 0 0 5px 0;
+        .card-header {
+            padding: 16px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .store-name {
+            font-size: 18px;
+            font-weight: 700;
             color: #2c3e50;
+            margin-bottom: 6px;
         }
 
-        .session-meta {
-            color: #6c757d;
-            font-size: 0.9rem;
-        }
-
-        .session-status {
+        .card-meta {
             display: flex;
-            gap: 10px;
+            flex-wrap: wrap;
+            gap: 12px;
+            font-size: 13px;
+            color: #6c757d;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .meta-item i {
+            font-size: 12px;
+            color: #adb5bd;
+        }
+
+        .status-badges {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
         }
 
         .status-badge {
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 500;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .status-before {
@@ -86,8 +312,8 @@
         }
 
         .status-after {
-            background: #e8f5e8;
-            color: #388e3c;
+            background: #e8f5e9;
+            color: #2e7d32;
         }
 
         .status-incomplete {
@@ -95,183 +321,282 @@
             color: #f57c00;
         }
 
-        .session-content {
-            padding: 20px;
+        /* Category Sections */
+        .categories-container {
+            padding: 12px;
         }
 
-        .categories-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-        }
-
-        .category-comparison {
-            border: 1px solid #e9ecef;
-            border-radius: 8px;
+        .category-item {
+            margin-bottom: 12px;
+            border: 1px solid #f0f0f0;
+            border-radius: 12px;
             overflow: hidden;
+            background: #fafafa;
         }
 
-        .category-title {
-            background: #495057;
+        .category-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .category-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 12px 16px;
-            font-weight: 500;
-            text-align: center;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
         }
 
-        .comparison-container {
+        .comparison-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            min-height: 200px;
+            background: white;
         }
 
-        .before-section, .after-section {
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
+        .before-column,
+        .after-column {
+            padding: 12px;
         }
 
-        .before-section {
-            background: #f8f9fa;
-            border-right: 1px solid #e9ecef;
+        .before-column {
+            border-right: 1px solid #f0f0f0;
         }
 
-        .after-section {
-            background: #ffffff;
-        }
-
-        .section-title {
-            font-weight: 600;
-            margin-bottom: 10px;
-            font-size: 0.9rem;
+        .column-label {
+            font-size: 11px;
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.8px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            user-select: none;
+            padding: 4px 0;
         }
 
-        .before-section .section-title {
+        .column-label:hover {
+            opacity: 0.7;
+        }
+
+        .column-label i.toggle-icon {
+            margin-left: auto;
+            font-size: 10px;
+            transition: transform 0.3s ease;
+        }
+
+        .column-label i.toggle-icon.collapsed {
+            transform: rotate(-90deg);
+        }
+
+        .before-column .column-label {
             color: #1976d2;
         }
 
-        .after-section .section-title {
-            color: #388e3c;
+        .after-column .column-label {
+            color: #2e7d32;
         }
 
-        .images-grid {
+        .column-label::before {
+            content: '';
+            width: 3px;
+            height: 12px;
+            border-radius: 2px;
+        }
+
+        .before-column .column-label::before {
+            background: #1976d2;
+        }
+
+        .after-column .column-label::before {
+            background: #2e7d32;
+        }
+
+        /* Thumbnail Grid */
+        .thumbnail-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+            grid-template-columns: repeat(2, 1fr);
             gap: 8px;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
+            max-height: 500px;
+            overflow: hidden;
+            transition: max-height 0.3s ease, opacity 0.3s ease;
         }
 
-        .history-image {
+        .thumbnail-grid.collapsed {
+            max-height: 0;
+            opacity: 0;
+            margin-bottom: 0;
+        }
+
+        .thumbnail-wrapper {
+            position: relative;
             aspect-ratio: 1;
-            border-radius: 6px;
+            border-radius: 8px;
             overflow: hidden;
             cursor: pointer;
-            transition: transform 0.2s;
+            transition: transform 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
 
-        .history-image:hover {
+        .thumbnail-wrapper:hover {
             transform: scale(1.05);
         }
 
-        .history-image img {
+        .thumbnail-wrapper img {
             width: 100%;
             height: 100%;
             object-fit: cover;
         }
 
-        .no-images {
-            color: #6c757d;
-            font-style: italic;
+        .image-overlay {
+            position: absolute;
+            top: 6px;
+            left: 6px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .no-images-placeholder {
             text-align: center;
-            padding: 20px;
+            padding: 20px 10px;
+            color: #adb5bd;
+            font-size: 12px;
+            font-style: italic;
+            max-height: 100px;
+            overflow: hidden;
+            transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+        }
+
+        .no-images-placeholder.collapsed {
+            max-height: 0;
+            opacity: 0;
+            padding: 0 10px;
         }
 
         .category-note {
-            font-size: 0.85rem;
+            font-size: 12px;
             color: #6c757d;
-            background: rgba(0, 0, 0, 0.05);
+            background: #f8f9fa;
             padding: 8px;
-            border-radius: 4px;
-            margin-top: auto;
+            border-radius: 6px;
+            margin-top: 8px;
+            line-height: 1.4;
+            max-height: 100px;
+            overflow: hidden;
+            transition: max-height 0.3s ease, opacity 0.3s ease;
         }
 
+        .category-note.collapsed {
+            max-height: 0;
+            opacity: 0;
+            margin-top: 0;
+            padding: 0 8px;
+        }
+
+        /* View Details Button */
+        .card-footer {
+            padding: 12px 16px;
+            background: #f8f9fa;
+            border-top: 1px solid #f0f0f0;
+        }
+
+        .view-details-btn {
+            width: 100%;
+            padding: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .view-details-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .view-details-btn:active {
+            transform: translateY(0);
+        }
+
+        /* Pagination */
         .pagination {
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 10px;
-            margin-top: 30px;
+            gap: 8px;
+            padding: 20px 16px;
         }
 
         .pagination button {
-            padding: 8px 12px;
-            border: 1px solid #dee2e6;
+            padding: 8px 14px;
+            border: none;
             background: white;
-            border-radius: 4px;
+            color: #667eea;
+            border-radius: 8px;
             cursor: pointer;
-            transition: all 0.2s;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         }
 
         .pagination button:hover:not(:disabled) {
             background: #667eea;
             color: white;
-            border-color: #667eea;
-        }
-
-        .pagination button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
         }
 
         .pagination button.active {
-            background: #667eea;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            border-color: #667eea;
         }
 
+        .pagination button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* Empty State */
         .empty-history {
             text-align: center;
             padding: 60px 20px;
-            color: #6c757d;
+            color: white;
         }
 
         .empty-history i {
-            font-size: 4rem;
+            font-size: 64px;
             margin-bottom: 20px;
-            opacity: 0.3;
+            opacity: 0.6;
         }
 
-        /* Mobile responsive */
-        @media (max-width: 768px) {
-            .history-header {
-                flex-direction: column;
-                gap: 15px;
-                text-align: center;
-            }
-
-            .session-header {
-                flex-direction: column;
-                gap: 10px;
-                text-align: center;
-            }
-
-            .comparison-container {
-                grid-template-columns: 1fr;
-            }
-
-            .before-section {
-                border-right: none;
-                border-bottom: 1px solid #e9ecef;
-            }
-
-            .categories-grid {
-                grid-template-columns: 1fr;
-            }
+        .empty-history h3 {
+            font-size: 20px;
+            margin-bottom: 8px;
         }
 
-        /* Lightbox styles */
+        .empty-history p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        /* Modal/Lightbox */
         .lightbox {
             display: none;
             position: fixed;
@@ -279,55 +604,319 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.9);
-            z-index: 1000;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 2000;
             justify-content: center;
             align-items: center;
+            padding: 20px;
         }
 
-        .lightbox img {
+        .lightbox.active {
+            display: flex;
+        }
+
+        .lightbox-content {
+            position: relative;
             max-width: 90%;
             max-height: 90%;
+        }
+
+        .lightbox-image {
+            max-width: 100%;
+            max-height: 90vh;
             object-fit: contain;
+            border-radius: 12px;
         }
 
         .lightbox-close {
             position: absolute;
-            top: 20px;
-            right: 30px;
+            top: -40px;
+            right: 0;
             color: white;
-            font-size: 2rem;
+            background: rgba(255, 255, 255, 0.2);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
             cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .lightbox-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+
+        .lightbox-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255, 255, 255, 0.2);
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .lightbox-nav:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-50%) scale(1.1);
+        }
+
+        .lightbox-prev {
+            left: -70px;
+        }
+
+        .lightbox-next {
+            right: -70px;
+        }
+
+        .lightbox-caption {
+            position: absolute;
+            bottom: -35px;
+            left: 0;
+            right: 0;
+            color: white;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        /* Loading */
+        .loading-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: white;
+        }
+
+        .loading-state i {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.6;
+        }
+
+        /* Responsive */
+        @media (max-width: 480px) {
+            .history-header {
+                padding: 12px 16px;
+            }
+
+            .header-title h1 {
+                font-size: 18px;
+            }
+
+            .store-name {
+                font-size: 16px;
+            }
+
+            .comparison-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .before-column {
+                border-right: none;
+                border-bottom: 1px solid #f0f0f0;
+            }
+
+            /* Filter section mobile optimization */
+            .filter-section {
+                margin: 12px;
+            }
+
+            .filter-content {
+                gap: 10px;
+                padding: 12px;
+            }
+
+            .date-range-group {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+
+            .date-input-wrapper {
+                width: 100%;
+            }
+
+            .date-label {
+                min-width: 45px;
+                font-size: 11px;
+            }
+
+            .filter-input {
+                flex: 1;
+                font-size: 13px;
+                padding: 9px 10px;
+            }
+
+            .filter-actions {
+                gap: 6px;
+            }
+
+            .clear-filters-btn,
+            .apply-filters-btn {
+                font-size: 12px;
+                padding: 9px;
+            }
+
+            .lightbox-prev {
+                left: 10px;
+            }
+
+            .lightbox-next {
+                right: 10px;
+            }
+
+            .lightbox-close {
+                top: 10px;
+                right: 10px;
+            }
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed !important;
+            bottom: 20px !important;
+            top: auto !important;
+            left: 50% !important;
+            transform: translateX(-50%) translateY(100px) !important;
+            background: #323232 !important;
+            color: white !important;
+            padding: 14px 24px !important;
+            border-radius: 8px !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+            z-index: 3000 !important;
+            transition: transform 0.3s ease !important;
+            font-size: 14px !important;
+            max-width: 90% !important;
+            width: fit-content !important;
+            min-width: 200px !important;
+            max-height: 60px !important;
+            height: auto !important;
+            text-align: center !important;
+            display: inline-block !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0) !important;
+        }
+
+        .toast.error {
+            background: #d32f2f;
+        }
+
+        .toast.success {
+            background: #388e3c;
         }
     </style>
 </head>
 <body>
     <div class="history-container">
+        <!-- Header -->
         <div class="history-header">
-            <div>
-                <h1><i class="fas fa-history"></i> Lịch sử hoạt động</h1>
-                <p>Xem lại các lần kiểm tra cửa hàng của bạn</p>
-            </div>            <button id="backButton" class="btn-primary">
-                <i class="fas fa-arrow-left"></i> Quay lại
-            </button>
-        </div>        <div id="historyContent">
+            <div class="header-left">
+                <button id="backButton" class="back-btn" aria-label="Go back">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                <div class="header-title">
+                    <h1>Activity History</h1>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter Section -->
+        <div class="filter-section">
+            <div class="filter-header" id="filterHeader">
+                <h3>
+                    <i class="fas fa-filter"></i>
+                    Filters
+                </h3>
+                <i class="fas fa-chevron-up filter-toggle" id="filterToggle"></i>
+            </div>
+            <div class="filter-content" id="filterContent">
+                <div class="filter-group">
+                    <div class="search-input-wrapper">
+                        <i class="fas fa-search search-icon"></i>
+                        <input
+                            type="text"
+                            id="storeSearch"
+                            class="filter-input search-input"
+                            placeholder="Search by store name..."
+                            autocomplete="off"
+                        >
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <div class="date-range-group">
+                        <div class="date-input-wrapper">
+                            <label class="date-label">From:</label>
+                            <input
+                                type="date"
+                                id="dateFrom"
+                                class="filter-input"
+                            >
+                        </div>
+                        <div class="date-input-wrapper">
+                            <label class="date-label">To:</label>
+                            <input
+                                type="date"
+                                id="dateTo"
+                                class="filter-input"
+                            >
+                        </div>
+                    </div>
+                </div>
+                <div class="filter-actions">
+                    <button class="clear-filters-btn" id="clearFilters">
+                        <i class="fas fa-times"></i> Clear Filters
+                    </button>
+                    <button class="apply-filters-btn" id="applyFilters">
+                        <i class="fas fa-check"></i> Apply Filter
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Content -->
+        <div class="history-content" id="historyContent">
             <!-- Content will be populated by JavaScript -->
         </div>
 
+        <!-- Pagination -->
         <div id="pagination" class="pagination"></div>
     </div>
 
     <!-- Lightbox -->
     <div id="lightbox" class="lightbox">
-        <span class="lightbox-close">&times;</span>
-        <img id="lightboxImage" src="" alt="Image">
+        <div class="lightbox-content">
+            <div class="lightbox-close" id="lightboxClose">
+                <i class="fas fa-times"></i>
+            </div>
+            <div class="lightbox-prev lightbox-nav" id="lightboxPrev">
+                <i class="fas fa-chevron-left"></i>
+            </div>
+            <img id="lightboxImage" class="lightbox-image" src="" alt="Preview">
+            <div class="lightbox-next lightbox-nav" id="lightboxNext">
+                <i class="fas fa-chevron-right"></i>
+            </div>
+            <div class="lightbox-caption" id="lightboxCaption"></div>
+        </div>
     </div>
 
     <!-- Loading overlay -->
     <div id="loadingOverlay" class="loading-overlay">
         <div class="loading-spinner">
             <div class="spinner"></div>
-            <p class="loading-text">Đang tải...</p>
+            <p class="loading-text">Loading...</p>
         </div>
     </div>
 
@@ -336,63 +925,114 @@
 
     <script>
         let currentPage = 1;
-        let totalPages = 1;        async function loadHistory(page = 1) {
+        let totalPages = 1;
+        let allHistory = [];
+        let filteredHistory = [];
+        let currentLightboxImages = [];
+        let currentLightboxIndex = 0;
+
+        // Filter state
+        let filterCollapsed = false;
+        let pendingFilters = {
+            storeSearch: '',
+            dateFrom: '',
+            dateTo: ''
+        };
+
+        // Load history
+        async function loadHistory(page = 1) {
             try {
                 showLoading(true);
                 console.log('📋 Loading history for page:', page);
-                const response = await fetch(`/api/user/history?page=${page}&limit=10`);
-                
-                console.log('📡 Response status:', response.status);
-                
+                const response = await fetch(`/api/user/history?page=${page}&limit=50`);
+
                 if (!response.ok) {
                     if (response.status === 401) {
                         console.log('🔒 User not authenticated, redirecting...');
                         window.location.href = '/';
                         return;
                     }
-                    console.error('❌ Response not ok:', response.status, response.statusText);
                     throw new Error('Failed to load history');
                 }
 
                 const data = await response.json();
                 console.log('📊 History data received:', data);
-                
-                renderHistory(data.history);
-                renderPagination(data.pagination);
-                
+
+                allHistory = data.history;
+                filteredHistory = allHistory;
+                renderHistory(filteredHistory);
+
                 console.log('✅ History loaded successfully');
-                
+
             } catch (error) {
                 console.error('❌ Error loading history:', error);
-                showToast('Không thể tải lịch sử', 'error');
+                showToast('Unable to load history', 'error');
             } finally {
                 showLoading(false);
             }
-        }        function renderHistory(historyData) {
+        }
+
+        // Apply filters
+        function applyFilters() {
+            filteredHistory = allHistory.filter(session => {
+                // Store name filter
+                if (pendingFilters.storeSearch && !session.storeName.toLowerCase().includes(pendingFilters.storeSearch)) {
+                    return false;
+                }
+
+                // Date range filter
+                const sessionDate = new Date(session.submittedAt).toISOString().split('T')[0];
+                if (pendingFilters.dateFrom && sessionDate < pendingFilters.dateFrom) {
+                    return false;
+                }
+                if (pendingFilters.dateTo && sessionDate > pendingFilters.dateTo) {
+                    return false;
+                }
+
+                return true;
+            });
+
+            renderHistory(filteredHistory);
+            showToast('Filters applied successfully', 'success');
+        }
+
+        // Update pending filters (called when user types/changes input)
+        function updatePendingFilters() {
+            pendingFilters.storeSearch = document.getElementById('storeSearch').value.toLowerCase();
+            pendingFilters.dateFrom = document.getElementById('dateFrom').value;
+            pendingFilters.dateTo = document.getElementById('dateTo').value;
+        }
+
+        // Render history
+        function renderHistory(historyData) {
             console.log('🎨 Rendering history with', historyData.length, 'sessions');
             const container = document.getElementById('historyContent');
-            
+
             if (historyData.length === 0) {
                 container.innerHTML = `
                     <div class="empty-history">
-                        <i class="fas fa-clock"></i>
-                        <h3>Chưa có lịch sử hoạt động</h3>
-                        <p>Bạn chưa thực hiện kiểm tra nào. Hãy bắt đầu kiểm tra cửa hàng đầu tiên!</p>
+                        <i class="fas fa-inbox"></i>
+                        <h3>No inspections found</h3>
+                        <p>Try adjusting your filters or start a new inspection</p>
                     </div>
                 `;
                 return;
             }
 
-            try {
-
-            container.innerHTML = historyData.map(session => {
+            container.innerHTML = historyData.map((session, sessionIndex) => {
                 const hasAfter = session.after.length > 0;
-                const statusBadges = [
-                    '<span class="status-badge status-before">Before</span>',
-                    hasAfter ? '<span class="status-badge status-after">After</span>' : '<span class="status-badge status-incomplete">Chưa hoàn thành</span>'
-                ].join('');
+                const sessionDate = new Date(session.submittedAt);
+                const formattedDate = sessionDate.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                });
+                const formattedTime = sessionDate.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
 
-                // Group categories by categoryId
+                // Group categories
                 const categoryMap = {};
                 session.before.forEach(submission => {
                     if (!categoryMap[submission.categoryId]) {
@@ -411,186 +1051,172 @@
                     }
                 });
 
-                const categoriesHtml = Object.values(categoryMap).map(category => `
-                    <div class="category-comparison">
-                        <div class="category-title">${category.categoryName}</div>
-                        <div class="comparison-container">
-                            <div class="before-section">
-                                <div class="section-title">Before</div>
-                                ${category.before ? `
-                                    <div class="images-grid">
-                                        ${category.before.images.map((image, index) => `
-                                            <div class="history-image" onclick="openLightbox('${image}')">
-                                                <img src="${image}" alt="Before ${index + 1}">
+                const categoriesHtml = Object.values(categoryMap).map((category, catIndex) => {
+                    const categoryId = `cat-${sessionIndex}-${catIndex}`;
+                    return `
+                    <div class="category-item">
+                        <div class="category-header">
+                            <i class="fas fa-tag"></i> ${category.categoryName}
+                        </div>
+                        <div class="comparison-grid">
+                            <div class="before-column">
+                                <div class="column-label" onclick="toggleSection('${categoryId}-before', event)">
+                                    Before
+                                    <i class="fas fa-chevron-down toggle-icon collapsed"></i>
+                                </div>
+                                ${category.before && category.before.images.length > 0 ? `
+                                    <div class="thumbnail-grid collapsed" id="${categoryId}-before-grid">
+                                        ${category.before.images.slice(0, 4).map((image, index) => `
+                                            <div class="thumbnail-wrapper" onclick="openLightbox(${JSON.stringify(category.before.images).replace(/"/g, '&quot;')}, ${index}, 'Before - ${category.categoryName}')">
+                                                <img src="${image}" alt="Before ${index + 1}" loading="lazy">
+                                                <div class="image-overlay">Before</div>
                                             </div>
                                         `).join('')}
                                     </div>
-                                    ${category.before.note ? `<div class="category-note">${category.before.note}</div>` : ''}
-                                ` : '<div class="no-images">Không có ảnh</div>'}
+                                    ${category.before.note ? `<div class="category-note collapsed" id="${categoryId}-before-note"><i class="fas fa-sticky-note"></i> ${category.before.note}</div>` : ''}
+                                ` : `<div class="no-images-placeholder collapsed" id="${categoryId}-before-grid"><i class="fas fa-image"></i><br>No images</div>`}
                             </div>
-                            <div class="after-section">
-                                <div class="section-title">After</div>
-                                ${category.after ? `
-                                    <div class="images-grid">
-                                        ${category.after.images.map((image, index) => `
-                                            <div class="history-image" onclick="openLightbox('${image}')">
-                                                <img src="${image}" alt="After ${index + 1}">
+                            <div class="after-column">
+                                <div class="column-label" onclick="toggleSection('${categoryId}-after', event)">
+                                    After
+                                    <i class="fas fa-chevron-down toggle-icon collapsed"></i>
+                                </div>
+                                ${category.after && category.after.images.length > 0 ? `
+                                    <div class="thumbnail-grid collapsed" id="${categoryId}-after-grid">
+                                        ${category.after.images.slice(0, 4).map((image, index) => `
+                                            <div class="thumbnail-wrapper" onclick="openLightbox(${JSON.stringify(category.after.images).replace(/"/g, '&quot;')}, ${index}, 'After - ${category.categoryName}')">
+                                                <img src="${image}" alt="After ${index + 1}" loading="lazy">
+                                                <div class="image-overlay">After</div>
                                             </div>
                                         `).join('')}
                                     </div>
-                                    ${category.after.note ? `<div class="category-note">${category.after.note}</div>` : ''}
-                                ` : '<div class="no-images">Chưa có ảnh sau cải thiện</div>'}
+                                    ${category.after.note ? `<div class="category-note collapsed" id="${categoryId}-after-note"><i class="fas fa-sticky-note"></i> ${category.after.note}</div>` : ''}
+                                ` : `<div class="no-images-placeholder collapsed" id="${categoryId}-after-grid"><i class="fas fa-hourglass-half"></i><br>Not completed</div>`}
                             </div>
                         </div>
                     </div>
-                `).join('');
+                `}).join('');
 
                 return `
-                    <div class="history-session">
-                        <div class="session-header">
-                            <div class="session-info">
-                                <h3>${session.storeName}</h3>
-                                <div class="session-meta">
-                                    <i class="fas fa-calendar"></i> ${new Date(session.submittedAt).toLocaleString('vi-VN')}
-                                    <span style="margin-left: 15px;"><i class="fas fa-store"></i> ${session.storeId}</span>
+                    <div class="inspection-card">
+                        <div class="card-header">
+                            <div class="store-name">${session.storeName}</div>
+                            <div class="card-meta">
+                                <div class="meta-item">
+                                    <i class="fas fa-calendar-alt"></i>
+                                    ${formattedDate}
+                                </div>
+                                <div class="meta-item">
+                                    <i class="fas fa-clock"></i>
+                                    ${formattedTime}
+                                </div>
+                                <div class="meta-item">
+                                    <i class="fas fa-store"></i>
+                                    ${session.storeId}
                                 </div>
                             </div>
-                            <div class="session-status">
-                                ${statusBadges}
-                            </div>
                         </div>
-                        <div class="session-content">
-                            <div class="categories-grid">
-                                ${categoriesHtml}
-                            </div>
+                        <div class="categories-container">
+                            ${categoriesHtml}
                         </div>
-                    </div>                `;
+                    </div>
+                `;
             }).join('');
-            
-            console.log('✅ History rendered successfully');
-            } catch (error) {
-                console.error('❌ Error rendering history:', error);
-                container.innerHTML = '<div class="error-message">Có lỗi xảy ra khi hiển thị lịch sử</div>';
-            }
-        }        function renderPagination(pagination) {
-            console.log('📄 Rendering pagination:', pagination);
-            const container = document.getElementById('pagination');
-            currentPage = pagination.currentPage;
-            totalPages = pagination.totalPages;
-
-            if (totalPages <= 1) {
-                container.innerHTML = '';
-                console.log('📄 No pagination needed (totalPages <= 1)');
-                return;
-            }
-
-            let paginationHtml = '';
-
-            // Previous button
-            paginationHtml += `<button ${currentPage === 1 ? 'disabled' : ''} onclick="loadHistory(${currentPage - 1})">
-                <i class="fas fa-chevron-left"></i>
-            </button>`;
-
-            // Page numbers
-            for (let i = 1; i <= totalPages; i++) {
-                if (i === currentPage) {
-                    paginationHtml += `<button class="active">${i}</button>`;
-                } else {
-                    paginationHtml += `<button onclick="loadHistory(${i})">${i}</button>`;
-                }
-            }
-
-            // Next button
-            paginationHtml += `<button ${currentPage === totalPages ? 'disabled' : ''} onclick="loadHistory(${currentPage + 1})">
-                <i class="fas fa-chevron-right"></i>
-            </button>`;
-
-            container.innerHTML = paginationHtml;
         }
 
-        function openLightbox(imageSrc) {
-            const lightbox = document.getElementById('lightbox');
-            const lightboxImage = document.getElementById('lightboxImage');
-            
-            lightboxImage.src = imageSrc;
-            lightbox.style.display = 'flex';
+        // Lightbox functions
+        function openLightbox(images, index, caption) {
+            currentLightboxImages = images;
+            currentLightboxIndex = index;
+            showLightboxImage();
+            document.getElementById('lightbox').classList.add('active');
             document.body.style.overflow = 'hidden';
         }
 
+        function showLightboxImage() {
+            const img = document.getElementById('lightboxImage');
+            const caption = document.getElementById('lightboxCaption');
+            img.src = currentLightboxImages[currentLightboxIndex];
+            caption.textContent = `${currentLightboxIndex + 1} / ${currentLightboxImages.length}`;
+
+            // Show/hide nav buttons
+            document.getElementById('lightboxPrev').style.display =
+                currentLightboxIndex > 0 ? 'flex' : 'none';
+            document.getElementById('lightboxNext').style.display =
+                currentLightboxIndex < currentLightboxImages.length - 1 ? 'flex' : 'none';
+        }
+
         function closeLightbox() {
-            const lightbox = document.getElementById('lightbox');
-            lightbox.style.display = 'none';
+            document.getElementById('lightbox').classList.remove('active');
             document.body.style.overflow = '';
-        }        async function goBack() {
-            console.log('Back button clicked');
+        }
+
+        function prevImage() {
+            if (currentLightboxIndex > 0) {
+                currentLightboxIndex--;
+                showLightboxImage();
+            }
+        }
+
+        function nextImage() {
+            if (currentLightboxIndex < currentLightboxImages.length - 1) {
+                currentLightboxIndex++;
+                showLightboxImage();
+            }
+        }
+
+        // View details (placeholder - can be expanded)
+        function viewDetails(sessionId) {
+            showToast('Full details view coming soon!', 'info');
+            console.log('View details for session:', sessionId);
+        }
+
+        // Back button
+        async function goBack() {
             try {
-                // Show loading while navigating
                 showLoading(true);
-                
-                // Check URL parameters to see where we came from
-                const urlParams = new URLSearchParams(window.location.search);
-                const referrer = urlParams.get('ref');
-                console.log('Referrer parameter:', referrer);
-                
-                // If this was opened in a new tab/window from the main app
+
                 if (window.opener && !window.opener.closed) {
-                    console.log('Closing window and returning to opener');
-                    // Try to focus the opener window
                     try {
                         window.opener.focus();
-                    } catch (focusError) {
-                        console.log('Could not focus opener window');
-                    }
+                    } catch (e) {}
                     window.close();
                     return;
                 }
-                
-                // Check if there's history to go back to and it's from the same origin
-                if (document.referrer && document.referrer.includes(window.location.origin) && document.referrer !== window.location.href) {
-                    console.log('Going back in history to:', document.referrer);
+
+                if (document.referrer && document.referrer.includes(window.location.origin)) {
                     window.history.back();
-                    // Set a timeout to fallback if history.back() doesn't work
                     setTimeout(() => {
                         if (document.visibilityState === 'visible') {
-                            console.log('History.back() might have failed, redirecting manually');
                             redirectToApp();
                         }
                     }, 1000);
                     return;
                 }
-                
-                // Fallback to main app redirect
+
                 await redirectToApp();
-                
+
             } catch (error) {
                 console.error('Error navigating back:', error);
-                showLoading(false);
-                // Last resort: redirect to main page
                 window.location.href = '/';
             }
         }
 
         async function redirectToApp() {
             try {
-                // Check if user is still authenticated before redirecting
                 const response = await fetch('/api/check-session');
-                if (response.ok) {
-                    // User is authenticated, redirect to main app
-                    console.log('User authenticated, redirecting to main app');
-                    window.location.href = '/';
-                } else {
-                    // Session expired, redirect to login
-                    console.log('Session expired, redirecting to login');
-                    window.location.href = '/';
-                }
+                window.location.href = '/';
             } catch (error) {
-                console.error('Error checking session:', error);
                 window.location.href = '/';
             }
         }
 
+        // Utility functions
         function showLoading(show = true) {
-            document.getElementById('loadingOverlay').classList.toggle('active', show);
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) {
+                overlay.classList.toggle('active', show);
+            }
         }
 
         function showToast(message, type = 'info') {
@@ -602,43 +1228,96 @@
             }, 3000);
         }
 
+        // Filter toggle
+        function toggleFilters() {
+            filterCollapsed = !filterCollapsed;
+            const content = document.getElementById('filterContent');
+            const toggle = document.getElementById('filterToggle');
+
+            content.classList.toggle('collapsed', filterCollapsed);
+            toggle.classList.toggle('collapsed', filterCollapsed);
+        }
+
+        // Toggle before/after section
+        function toggleSection(sectionId, event) {
+            event.stopPropagation(); // Prevent event bubbling
+
+            const grid = document.getElementById(`${sectionId}-grid`);
+            const note = document.getElementById(`${sectionId}-note`);
+            const toggleIcon = event.currentTarget.querySelector('.toggle-icon');
+
+            if (grid) {
+                grid.classList.toggle('collapsed');
+            }
+            if (note) {
+                note.classList.toggle('collapsed');
+            }
+            if (toggleIcon) {
+                toggleIcon.classList.toggle('collapsed');
+            }
+        }
+
         // Event listeners
-        document.getElementById('lightbox').addEventListener('click', function(e) {
-            if (e.target === this) {
-                closeLightbox();
-            }
-        });
-
-        document.querySelector('.lightbox-close').addEventListener('click', closeLightbox);
-
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                closeLightbox();
-            }
-        });        // Load history on page load
         document.addEventListener('DOMContentLoaded', function() {
-            // Show initial loading state
+            // Initial load
             document.getElementById('historyContent').innerHTML = `
-                <div style="text-align: center; padding: 60px 20px; color: #6c757d;">
-                    <i class="fas fa-spinner fa-spin fa-2x" style="margin-bottom: 20px; opacity: 0.5;"></i>
-                    <p>Đang tải lịch sử hoạt động...</p>
+                <div class="loading-state">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Loading activity history...</p>
                 </div>
             `;
-            
+
             loadHistory();
-            
-            // Add event listener for back button
-            const backButton = document.getElementById('backButton');
-            if (backButton) {
-                console.log('Back button found, adding event listener');
-                backButton.addEventListener('click', function(e) {
-                    console.log('Back button clicked via event listener');
-                    e.preventDefault();
-                    goBack();
-                });
-            } else {
-                console.error('Back button not found!');
-            }
+
+            // Back button
+            document.getElementById('backButton').addEventListener('click', goBack);
+
+            // Filter toggle
+            document.getElementById('filterHeader').addEventListener('click', toggleFilters);
+
+            // Filter inputs - just update pending filters, don't apply yet
+            document.getElementById('storeSearch').addEventListener('input', updatePendingFilters);
+            document.getElementById('dateFrom').addEventListener('change', updatePendingFilters);
+            document.getElementById('dateTo').addEventListener('change', updatePendingFilters);
+
+            // Apply filters button
+            document.getElementById('applyFilters').addEventListener('click', function() {
+                updatePendingFilters();
+                applyFilters();
+            });
+
+            // Clear filters
+            document.getElementById('clearFilters').addEventListener('click', function() {
+                document.getElementById('storeSearch').value = '';
+                document.getElementById('dateFrom').value = '';
+                document.getElementById('dateTo').value = '';
+                pendingFilters = {
+                    storeSearch: '',
+                    dateFrom: '',
+                    dateTo: ''
+                };
+                filteredHistory = allHistory;
+                renderHistory(filteredHistory);
+                showToast('Filters cleared', 'info');
+            });
+
+            // Lightbox controls
+            document.getElementById('lightbox').addEventListener('click', function(e) {
+                if (e.target === this) closeLightbox();
+            });
+            document.getElementById('lightboxClose').addEventListener('click', closeLightbox);
+            document.getElementById('lightboxPrev').addEventListener('click', prevImage);
+            document.getElementById('lightboxNext').addEventListener('click', nextImage);
+
+            // Keyboard navigation
+            document.addEventListener('keydown', function(e) {
+                const lightbox = document.getElementById('lightbox');
+                if (lightbox.classList.contains('active')) {
+                    if (e.key === 'Escape') closeLightbox();
+                    if (e.key === 'ArrowLeft') prevImage();
+                    if (e.key === 'ArrowRight') nextImage();
+                }
+            });
         });
     </script>
 </body>

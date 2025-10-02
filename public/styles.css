@@ -43,6 +43,45 @@ body {
     text-align: center;
 }
 
+/* Professional Store Header */
+.store-header-wrapper {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+    margin-bottom: 24px;
+    border-radius: 0 0 16px 16px;
+}
+
+.store-header {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.header-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 0 0 auto;
+}
+
+.header-icon {
+    font-size: 24px;
+    color: #667eea;
+}
+
+.header-title h2 {
+    color: #2c3e50;
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0;
+    white-space: nowrap;
+}
+
 /* Header Actions */
 .header-actions {
     display: flex;
@@ -50,6 +89,50 @@ body {
     align-items: center;
 }
 
+.store-header .header-actions {
+    gap: 12px;
+    align-items: center;
+}
+
+/* Store Header Button Styles - Consistent Design */
+.store-header .header-actions .btn-secondary {
+    background: white;
+    border: 2px solid #e0e0e0;
+    color: #495057;
+    padding: 0 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 45px;
+    box-sizing: border-box;
+    vertical-align: middle;
+}
+
+.store-header .header-actions .btn-secondary span {
+    margin: 0;
+    line-height: 1;
+    display: inline-block;
+}
+
+.header-actions .btn-secondary span {
+    margin-left: 6px;
+}
+
+.store-header .header-actions .btn-secondary:hover {
+    background: #667eea;
+    border-color: #667eea;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.25);
+}
+
+/* Legacy Header Button Styles */
 .header-actions .btn-secondary {
     background: rgba(255, 255, 255, 0.15);
     border: 1px solid rgba(255, 255, 255, 0.3);
@@ -70,7 +153,7 @@ body {
 }
 
 /* Buttons */
-.btn-back, .btn-logout {
+.btn-back {
     background: rgba(255, 255, 255, 0.2);
     border: none;
     color: white;
@@ -85,7 +168,7 @@ body {
     transition: all 0.3s ease;
 }
 
-.btn-back:hover, .btn-logout:hover {
+.btn-back:hover {
     background: rgba(255, 255, 255, 0.3);
     transform: scale(1.05);
 }
@@ -1187,18 +1270,52 @@ mark {
     .after-step-container {
         padding: 0 10px;
     }
-    
+
     .category-selector label {
         padding: 20px;
     }
-    
+
     .category-name {
         font-size: 1.1rem;
     }
-    
+
     .before-info {
         font-size: 0.8rem;
         padding: 4px 10px;
+    }
+
+    /* Mobile Header Styles */
+    .store-header-wrapper {
+        border-radius: 0 0 12px 12px;
+        margin-bottom: 16px;
+    }
+
+    .store-header {
+        padding: 12px 16px;
+        flex-direction: row;
+        gap: 12px;
+        align-items: center;
+    }
+
+    .header-title {
+        gap: 8px;
+        flex: 1;
+    }
+
+    .header-icon {
+        font-size: 20px;
+    }
+
+    .header-title h2 {
+        font-size: 16px;
+    }
+
+    .header-actions {
+        flex-shrink: 0;
+    }
+
+    .header-actions .btn-secondary span {
+        display: none;
     }
 }
 
