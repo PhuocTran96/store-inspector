@@ -5,7 +5,7 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
-const { getData } = require('../services/dataLoader');
+const { getData, loadUsers } = require('../services/dataLoader');
 
 /**
  * POST /api/login
@@ -14,24 +14,32 @@ const { getData } = require('../services/dataLoader');
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    console.log('🔐 Login attempt:', { username });
+    console.log('🔐 Login attempt:', { userId: username });
 
     if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password are required' });
+      return res.status(400).json({ error: 'User ID and password are required' });
     }
 
     const { usersData } = getData();
-    const user = usersData.find(u => u.Username === username);
+    console.log(`🔍 Looking for userId: "${username}" in ${usersData.length} users`);
+
+    // Find user by userId (case-insensitive)
+    const user = usersData.find(u =>
+      u['User ID'] && u['User ID'].toLowerCase() === username.toLowerCase()
+    );
 
     if (!user) {
-      console.log('❌ User not found:', username);
-      return res.status(401).json({ error: 'Invalid username or password' });
+      console.log('❌ User not found in cache:', username);
+      return res.status(401).json({ error: 'Invalid user ID or password' });
     }
 
-    const dbUser = await User.findOne({ username: username });
+    // Find in database (case-insensitive)
+    const dbUser = await User.findOne({
+      userId: { $regex: new RegExp(`^${username}$`, 'i') }
+    });
     if (!dbUser) {
       console.log('❌ User not found in database:', username);
-      return res.status(401).json({ error: 'Invalid username or password' });
+      return res.status(401).json({ error: 'Invalid user ID or password' });
     }
 
     if (dbUser.status === 'inactive') {
@@ -83,7 +91,10 @@ router.post('/login', async (req, res) => {
  */
 router.get('/check-session', async (req, res) => {
   if (req.session.user) {
-    const dbUser = await User.findOne({ username: req.session.user.username });
+    // Find user by userId (case-insensitive)
+    const dbUser = await User.findOne({
+      userId: { $regex: new RegExp(`^${req.session.user.userId}$`, 'i') }
+    });
     res.json({
       loggedIn: true,
       user: {
@@ -104,7 +115,8 @@ router.post('/change-password', async (req, res) => {
   try {
     const { username, currentPassword, newPassword } = req.body;
 
-    if (!req.session.user || req.session.user.username !== username) {
+    // Check if user is authorized (match by userId, case-insensitive)
+    if (!req.session.user || req.session.user.userId.toLowerCase() !== username.toLowerCase()) {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
@@ -116,7 +128,10 @@ router.post('/change-password', async (req, res) => {
       return res.status(400).json({ error: 'New password must be at least 6 characters long' });
     }
 
-    const dbUser = await User.findOne({ username: username });
+    // Find user by userId (case-insensitive)
+    const dbUser = await User.findOne({
+      userId: { $regex: new RegExp(`^${username}$`, 'i') }
+    });
     if (!dbUser) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -131,6 +146,9 @@ router.post('/change-password', async (req, res) => {
     dbUser.mustChangePassword = false;
     dbUser.updatedAt = new Date();
     await dbUser.save();
+
+    // Reload users data to ensure in-memory cache is synchronized
+    await loadUsers();
 
     console.log(`✅ Password changed successfully for user: ${username}`);
 

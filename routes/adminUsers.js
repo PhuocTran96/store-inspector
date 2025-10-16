@@ -198,13 +198,10 @@ router.post('/users/:id/reset-password', requireAdmin, async (req, res) => {
     user.updatedAt = new Date();
     await user.save();
 
-    // Update the in-memory usersData array to ensure login works immediately
-    const { usersData } = getData();
-    const userIndex = usersData.findIndex(u => u['User ID'] && u['User ID'].trim() === user.userId.trim());
-    if (userIndex !== -1) {
-      usersData[userIndex].Password = hashedPassword;
-      console.log(`Password updated in memory for user: ${user.username}`);
-    }
+    // Reload users data to ensure in-memory cache is synchronized
+    await loadUsers();
+
+    console.log(`✅ Password reset successfully for user: ${user.username}`);
 
     res.json({ message: 'Password reset successfully' });
   } catch (error) {

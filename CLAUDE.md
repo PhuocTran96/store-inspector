@@ -51,7 +51,9 @@ The application was refactored from a 2461-line monolithic `server.js` into a cl
 - Express sessions with MongoDB (via express-session)
 - Session stores: `user` object with `{ username, userId, role, tdsName }`
 - Three roles: **Admin** (full access), **TDL** (Team Development Leader), **TDS** (Team Development Supervisor)
+- **Login uses `userId` (case-insensitive)** - users can log in with any case variation of their userId
 - Field users see only assigned stores filtered by role and name matching
+- **IMPORTANT:** After password changes (user self-service or admin reset), `loadUsers()` is called to refresh the in-memory cache immediately
 
 ### Two-Stage Submission Workflow
 
@@ -82,13 +84,17 @@ The application was refactored from a 2461-line monolithic `server.js` into a cl
 ## Key API Endpoints
 
 **Authentication (routes/auth.js):**
-- `POST /api/login` - User login with username/password (bcrypt)
+- `POST /api/login` - User login with **userId** (case-insensitive) and password (bcrypt). Matches against both in-memory cache and MongoDB using regex for case-insensitivity
 - `POST /api/logout` - Session destruction
-- `POST /api/change-password` - Password update with old password verification
-- `GET /api/session` - Get current session user info
+- `POST /api/change-password` - Password update with old password verification. Calls `loadUsers()` after save to refresh cache
+- `GET /api/check-session` - Get current session user info
 
 **Data (routes/data.js):**
-- `GET /api/stores` - Get stores filtered by user role (TDL/TDS see assigned stores, Admin sees all)
+- `GET /api/stores` - Get stores filtered by user role:
+  - **Admin:** Returns all stores
+  - **TDL:** Returns stores where `TDL name` matches `session.user.username` (exact or normalized Vietnamese)
+  - **TDS:** Returns stores where `TDS name` matches `session.user.username` (exact or normalized Vietnamese)
+  - Fallback to partial matching if no exact match, then returns first 5 stores as demo
 - `GET /api/categories` - Get active categories sorted by order
 
 **Submissions (routes/submissions.js):**
@@ -103,11 +109,11 @@ The application was refactored from a 2461-line monolithic `server.js` into a cl
 
 **Admin Users (routes/adminUsers.js):**
 - `GET /api/admin/users` - List all users
-- `POST /api/admin/users` - Create user
-- `PUT /api/admin/users/:id` - Update user
-- `DELETE /api/admin/users/:id` - Delete user
-- `POST /api/admin/users/:id/reset-password` - Reset password
-- `POST /api/admin/users/:id/toggle-status` - Activate/deactivate user
+- `POST /api/admin/users` - Create user. Calls `loadUsers()` after save
+- `PUT /api/admin/users/:id` - Update user. Calls `loadUsers()` after save
+- `DELETE /api/admin/users/:id` - Delete user. Calls `loadUsers()` after deletion
+- `POST /api/admin/users/:id/reset-password` - Reset password. Calls `loadUsers()` after save to refresh cache
+- `POST /api/admin/users/:id/toggle-status` - Activate/deactivate user. Calls `loadUsers()` after save
 
 **Admin Categories (routes/adminCategories.js):**
 - `GET /api/admin/categories` - List all categories (including inactive)
@@ -134,8 +140,9 @@ The application was refactored from a 2461-line monolithic `server.js` into a cl
 ## MongoDB Models
 
 **User:**
-- `username`, `userId`, `password` (bcrypt hashed), `role` (Admin/TDL/TDS), `tdsName`, `isActive`
-- Case-sensitive matching for userId/username in login
+- `username` (actual name like "Lê Văn Trí"), `userId` (login ID like "elux00812@eluxvn"), `password` (bcrypt hashed), `role` (Admin/TDL/TDS), `tdsName`, `status` (active/inactive)
+- **Login uses `userId` with case-insensitive matching** (e.g., "admin", "Admin", "ADMIN" all work)
+- `username` field is used for store filtering (matched against store's TDL/TDS name fields)
 
 **Store:**
 - Many fields: `stt`, `tdlName`, `tdsName`, `storeName`, `storeCode`, `dealerCode`, `address`, `typeShop`, `province`, `city`, `district`, `region`, etc.
@@ -193,8 +200,11 @@ Required:
 ## Common Issues & Solutions
 
 **"No stores found" for TDL/TDS:**
-- Check `TDL name` / `TDS name` fields in Store documents match user's username/tdsName exactly
-- Filtering is case-sensitive for these fields
+- Check `TDL name` / `TDS name` fields in Store documents match user's `username` field (NOT `userId`)
+- **TDL users:** Stores filtered by `TDL name` field only
+- **TDS users:** Stores filtered by `TDS name` field only
+- Matching supports exact match and Vietnamese accent normalization
+- Fallback to partial matching if no exact match found
 
 **Session not persisting:**
 - Verify `SESSION_SECRET` is set in .env
@@ -214,6 +224,11 @@ Required:
 - Ensure `sessionId` is passed as query parameter
 - Check `userId` or `username` in session matches Submission records
 - Route tries userId first, then username, then no user filter (backward compatibility)
+
+**Password change not working / "User not found" after password change:**
+- Ensure `loadUsers()` is called after password updates in both `routes/auth.js` and `routes/adminUsers.js`
+- This refreshes the in-memory cache so login uses the new password immediately
+- All admin user operations (create, update, delete, toggle status, reset password) should call `loadUsers()` after MongoDB save
 
 ## Vietnamese Language Support
 

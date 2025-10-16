@@ -12,66 +12,85 @@ const { getData } = require('../services/dataLoader');
  * - Admin: returns all stores
  * - TDL/TDS: returns stores filtered by username
  */
-router.get('/api/stores', (req, res) => {
-  console.log('API stores called, session:', req.session);
-
+router.get('/stores', (req, res) => {
   if (!req.session.user) {
-    console.log('Không có session user - yêu cầu đăng nhập lại');
+    console.log('❌ No session user - login required');
     return res.status(401).json({ error: 'Session expired. Please login again.' });
   }
 
-  console.log('Session user:', req.session.user);
+  console.log('📋 Fetching stores for user:', req.session.user);
 
   const { storesData } = getData();
 
-  // Nếu là Admin, trả về tất cả stores
+  // If Admin, return all stores
   if (req.session.user.role === 'Admin') {
-    console.log('User là Admin, trả về tất cả stores');
+    console.log('✅ User is Admin, returning all stores:', storesData.length);
     return res.json(storesData);
   }
 
-  // Nếu là TDL hoặc TDS, lọc theo username
+  // For TDL or TDS, filter by username and role
   const username = req.session.user.username ? req.session.user.username.trim() : '';
-  console.log(`Tìm store cho username: "${username}"`);
+  const role = req.session.user.role;
+  console.log(`🔍 Looking for stores matching username: "${username}" with role: "${role}"`);
 
-  // Tạo một bản sao của tên người dùng không dấu để so sánh
+  // Normalize username (remove Vietnamese accents for comparison)
   const normalizedUsername = username.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  console.log(`Tên người dùng không dấu: "${normalizedUsername}"`);
+  console.log(`📝 Normalized username: "${normalizedUsername}"`);
 
-  // Lấy stores theo tên người dùng, bao gồm cả phiên bản có dấu và không dấu
+  // Filter stores based on role
   let userStores = storesData.filter(store => {
     const tdlName = store['TDL name'] ? store['TDL name'].trim() : '';
     const tdsName = store['TDS name'] ? store['TDS name'].trim() : '';
 
-    // Chuyển đổi tên trong store sang không dấu để so sánh
+    // Normalize store names (remove Vietnamese accents)
     const normalizedTDL = tdlName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const normalizedTDS = tdsName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-    const exactMatch = tdlName === username || tdsName === username;
-    const normalizedMatch = normalizedTDL === normalizedUsername || normalizedTDS === normalizedUsername;
-
-    return exactMatch || normalizedMatch;
+    // Match based on role
+    if (role === 'TDL') {
+      // TDL users match against TDL name field
+      const exactMatch = tdlName === username;
+      const normalizedMatch = normalizedTDL === normalizedUsername;
+      return exactMatch || normalizedMatch;
+    } else if (role === 'TDS') {
+      // TDS users match against TDS name field
+      const exactMatch = tdsName === username;
+      const normalizedMatch = normalizedTDS === normalizedUsername;
+      return exactMatch || normalizedMatch;
+    }
+    return false;
   });
 
-  // Nếu không tìm thấy stores theo tên, thử match một phần tên
+  // If no exact match, try partial name matching (still respecting role)
   if (userStores.length === 0) {
-    console.log('Không tìm thấy matches chính xác, thử tìm kiếm một phần');
+    console.log('⚠️ No exact match found, trying partial name matching');
     userStores = storesData.filter(store => {
       const tdlName = store['TDL name'] ? store['TDL name'].trim().toLowerCase() : '';
       const tdsName = store['TDS name'] ? store['TDS name'].trim().toLowerCase() : '';
-
       const lowercaseName = username.toLowerCase();
-      return tdlName.includes(lowercaseName) || tdsName.includes(lowercaseName);
+
+      // Match based on role - partial match
+      if (role === 'TDL') {
+        return tdlName.includes(lowercaseName);
+      } else if (role === 'TDS') {
+        return tdsName.includes(lowercaseName);
+      }
+      return false;
     });
+    console.log(`📝 Partial match found: ${userStores.length} stores`);
   }
 
-  // Luôn trả về ít nhất 3 stores để demo
+  // Return first 5 stores as demo if still no match
   if (userStores.length === 0) {
-    console.log('Không tìm thấy stores, lấy stores đầu tiên làm demo');
+    console.log('⚠️ No stores found, returning first 5 stores as demo');
     userStores = storesData.slice(0, 5);
+    if (storesData.length > 0) {
+      console.log('📋 Sample store TDL names:', storesData.slice(0, 5).map(s => s['TDL name']));
+      console.log('📋 Sample store TDS names:', storesData.slice(0, 5).map(s => s['TDS name']));
+    }
   }
 
-  console.log(`Tìm thấy ${userStores.length} stores`);
+  console.log(`✅ Returning ${userStores.length} stores for user "${username}"`);
   res.json(userStores);
 });
 
@@ -80,7 +99,7 @@ router.get('/api/stores', (req, res) => {
  * Get all categories
  * Returns all available categories for the application
  */
-router.get('/api/categories', (req, res) => {
+router.get('/categories', (req, res) => {
   const { categoriesData } = getData();
   res.json(categoriesData);
 });
