@@ -399,8 +399,8 @@ class App {
                 this.currentUser = data.user;
                 console.log('User already authenticated:', this.currentUser);
                 // Enforce mustChangePassword on session restore
-                if (data.mustChangePassword) {
-                    document.getElementById('changePasswordUserIdInput').value = this.currentUser.id;
+                if (data.user && data.user.mustChangePassword) {
+                    document.getElementById('changePasswordUserIdInput').value = this.currentUser.userId;
                     this.showScreen('changePasswordScreen');
                     this.showToast('Bạn cần đổi mật khẩu trước khi sử dụng hệ thống.', 'warning');
                     return;
@@ -450,9 +450,9 @@ class App {
                 console.log('Đăng nhập thành công:', this.currentUser);
                 this.showToast('Đăng nhập thành công!', 'success');
                 // If must change password, force change password screen
-                if (data.mustChangePassword) {
+                if (data.user && data.user.mustChangePassword) {
                     // Pre-fill userId for change password
-                    document.getElementById('changePasswordUserIdInput').value = this.currentUser.id;
+                    document.getElementById('changePasswordUserIdInput').value = this.currentUser.userId;
                     this.showScreen('changePasswordScreen');
                     this.showToast('Bạn cần đổi mật khẩu trước khi sử dụng hệ thống.', 'warning');
                     return;
@@ -485,18 +485,18 @@ class App {
         document.getElementById('changePasswordForm').reset();
         document.getElementById('userIdGroup').style.display = 'block';
         document.querySelector('.user-info-card').style.display = 'none';
-        
+
         // Reset user info display
         document.getElementById('changePasswordUsername').textContent = 'Chưa đăng nhập';
         document.getElementById('changePasswordUserId').textContent = 'ID: -';
         document.getElementById('changePasswordRole').textContent = '-';
-        
+
         // If user is already logged in, show their info directly
         if (this.currentUser) {
-            document.getElementById('changePasswordUserIdInput').value = this.currentUser.id;
+            document.getElementById('changePasswordUserIdInput').value = this.currentUser.userId;
             this.loadUserInfo();
         }
-        
+
         this.showScreen('changePasswordScreen');
     }
 
