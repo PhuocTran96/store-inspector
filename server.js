@@ -72,6 +72,7 @@ const adminUsersRoutes = require('./routes/adminUsers');
 const adminCategoriesRoutes = require('./routes/adminCategories');
 const adminTemplatesRoutes = require('./routes/adminTemplates');
 const adminExportRoutes = require('./routes/adminExport');
+const adminSettingsRoutes = require('./routes/adminSettings');
 
 // Mount routes
 app.use('/api', authRoutes);
@@ -82,6 +83,7 @@ app.use('/api/admin', adminUsersRoutes);
 app.use('/api/admin', adminCategoriesRoutes);
 app.use('/api/template', adminTemplatesRoutes);
 app.use('/api/admin', adminExportRoutes);
+app.use('/api/admin/settings', adminSettingsRoutes);
 
 // ============================================================================
 // Error Handling

@@ -277,6 +277,8 @@ function setCategoriesData(data) {
 module.exports = {
   loadData,
   loadUsers,
+  loadStoresFromMongoDB,
+  loadCategoriesFromMongoDB,
   getData,
   setUsersData,
   setStoresData,

@@ -18,6 +18,7 @@ const { requireAdmin, requireAuth } = require('../middleware/auth');
 // Services
 const { getData } = require('../services/dataLoader');
 const { checkMCPCompliance } = require('../services/mcpCompliance');
+const { sendUnfixedIssueNotification } = require('../services/telegramNotifier');
 
 // S3 Configuration
 const { upload, uploadBufferToS3, deleteFromS3 } = require('../config/s3Config');
@@ -134,6 +135,38 @@ router.post('/submit', async (req, res) => {
 
         await newSubmission.save();
         console.log(`✅ Saved submission for category: ${category.categoryName} with ${category.processedImages?.length || 0} images`);
+
+        // Send Telegram notification if this is an "after" submission with unfixed issue
+        if (step === 'after' && category.fixed === false) {
+          console.log(`📨 Triggering Telegram notification for unfixed issue in category: ${category.categoryName}`);
+
+          // Find corresponding "before" submission to get images
+          Submission.findOne({
+            storeId: storeId,
+            categoryId: category.categoryId,
+            sessionId: sessionId,
+            submissionType: 'before'
+          })
+            .then(beforeSubmission => {
+              // Send notification (async, non-blocking)
+              sendUnfixedIssueNotification({
+                userId: req.session.user.id || req.session.user.userId,
+                username: req.session.user.username,
+                tdsName: (store.tdsName || store['TDS name'] || '').trim(),
+                storeName: store['Store name'] || store.storeName || store.name || 'Unknown Store',
+                categoryName: category.categoryName,
+                note: category.note || '',
+                expectedResolutionDate: category.expectedResolutionDate,
+                submittedAt: newSubmission.submittedAt
+              }, beforeSubmission).catch(err => {
+                console.error('❌ Telegram notification failed:', err.message);
+                // Don't fail the API request
+              });
+            })
+            .catch(err => {
+              console.error('❌ Error finding before submission for Telegram notification:', err);
+            });
+        }
 
       } catch (saveError) {
         console.error('❌ Error saving submission:', saveError);
