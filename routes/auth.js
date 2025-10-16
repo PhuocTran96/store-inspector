@@ -113,10 +113,10 @@ router.get('/check-session', async (req, res) => {
  */
 router.post('/change-password', async (req, res) => {
   try {
-    const { username, currentPassword, newPassword } = req.body;
+    const { userId, currentPassword, newPassword } = req.body;
 
     // Check if user is authorized (match by userId, case-insensitive)
-    if (!req.session.user || req.session.user.userId.toLowerCase() !== username.toLowerCase()) {
+    if (!req.session.user || req.session.user.userId.toLowerCase() !== userId.toLowerCase()) {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
@@ -130,7 +130,7 @@ router.post('/change-password', async (req, res) => {
 
     // Find user by userId (case-insensitive)
     const dbUser = await User.findOne({
-      userId: { $regex: new RegExp(`^${username}$`, 'i') }
+      userId: { $regex: new RegExp(`^${userId}$`, 'i') }
     });
     if (!dbUser) {
       return res.status(404).json({ error: 'User not found' });
@@ -150,7 +150,7 @@ router.post('/change-password', async (req, res) => {
     // Reload users data to ensure in-memory cache is synchronized
     await loadUsers();
 
-    console.log(`✅ Password changed successfully for user: ${username}`);
+    console.log(`✅ Password changed successfully for user: ${userId}`);
 
     res.json({ success: true, message: 'Password changed successfully' });
   } catch (error) {
